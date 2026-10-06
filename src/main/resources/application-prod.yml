@@ -1,0 +1,52 @@
+# Production profile. Activate with SPRING_PROFILES_ACTIVE=prod
+# Secrets (DB_PASSWORD, APP_ENCRYPTION_KEY, MAIL_PASSWORD, ...) come from the environment
+# or a secret manager, never from this file.
+# Properties below have NO defaults on purpose: a missing value stops startup
+# instead of silently falling back to localhost.
+spring:
+  datasource:
+    # Use SSL if the database is not on the same private network, e.g. ...?sslmode=require
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
+  jpa:
+    show-sql: false
+  flyway:
+    clean-disabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+  # Needed when TLS is terminated by a reverse proxy / load balancer (nginx, ingress, ...).
+  # Remove if Tomcat is exposed directly.
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # Hard-coded so an env var cannot turn it off in production
+        secure: true
+        http-only: true
+        same-site: lax
+
+app:
+  public-url: ${PUBLIC_URL}
+  mail:
+    from: ${MAIL_FROM}
+  bootstrap:
+    enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}
+    email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+    totp-secret: ${ADMIN_BOOTSTRAP_TOTP_SECRET:}
+
+logging:
+  level:
+    root: INFO

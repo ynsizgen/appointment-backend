@@ -1,0 +1,33 @@
+app:
+  public-url: http://localhost:8080
+  verification-ttl: PT24H
+  security:
+    encryption-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    session-max-age: PT8H
+  mail:
+    worker-enabled: false
+    from: no-reply@example.invalid
+  bootstrap:
+    enabled: false
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
+        http-only: true
+        same-site: lax
+
+spring:
+  flyway:
+    schemas: appointment
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  mail:
+    host: localhost
+    port: 1025
+management:
+  health:
+    mail:
+      enabled: false

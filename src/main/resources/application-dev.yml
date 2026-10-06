@@ -1,0 +1,53 @@
+# Development profile. Activate with SPRING_PROFILES_ACTIVE=dev
+spring:
+  config:
+    # Spring Boot does not read .env files on its own; this loads .env.dev from the working directory.
+    import: optional:file:.env.dev[.properties]
+  datasource:
+    # Local PostgreSQL (port 5433)
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/appointment}
+    username: ${DB_USERNAME:appointment}
+    # Password comes from .env.dev (DB_PASSWORD), not from this file
+    password: ${DB_PASSWORD}
+  flyway:
+    schemas: appointment
+  mail:
+    # Local mail catcher (MailHog/Mailpit), no auth or TLS
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+  web:
+    error:
+      include-message: always
+      include-binding-errors: always
+
+app:
+  public-url: ${PUBLIC_URL:http://localhost:8080}
+  mail:
+    from: ${MAIL_FROM:no-reply@localhost}
+  security:
+    encryption-key: ${APP_SECURITY_ENCRYPTION_KEY}
+    session-max-age: 1H
+  bootstrap:
+    enabled: ${ADMIN_BOOTSTRAP_ENABLED:}
+    email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+    totp-secret: ${ADMIN_BOOTSTRAP_TOTP_SECRET:}
+  verification-ttl: 3m
+
+server:
+  servlet:
+    session:
+      cookie:
+        # Plain HTTP on localhost
+        secure: false
+        http-only: true
+        same-site: lax
+
+logging:
+  level:
+    root: INFO
+    # Replace with your base package
+    com.example.appointment: DEBUG

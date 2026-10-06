@@ -1,0 +1,55 @@
+package com.appointmentplatform;
+
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class BrandBranchMigrationTests {
+    @Test
+    void upgradePreservesExistingIdentitiesAddressesAndDoesNotInventPaidEntitlements() throws Exception {
+        try (var database = new PostgreSQLContainer("postgres:17")) {
+            database.start();
+            var old = Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+                    .schemas("appointment").target("4").load();
+            old.migrate();
+            sql(database, """
+                INSERT INTO appointment.tenants(id, display_name, address, google_maps_url, active) VALUES
+                ('00000000-0000-0000-0000-000000000001', 'Existing Brand', 'Original address', 'https://maps.google.com/old', true),
+                ('00000000-0000-0000-0000-000000000002', 'Other Brand', 'Other address', NULL, false);
+                INSERT INTO appointment.users(id, email, password_hash, first_name, last_name, role, tenant_id) VALUES
+                ('00000000-0000-0000-0000-000000000011', 'existing@example.com', 'hash', 'Existing', 'Owner', 'BRAND', '00000000-0000-0000-0000-000000000001');
+                INSERT INTO appointment.audit_events(id, actor_id, tenant_id, action, outcome) VALUES
+                ('00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000001', 'TENANT_ACTIVATED', 'SUCCESS');
+                """);
+            var current = Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+                    .schemas("appointment").load();
+            current.migrate();
+            current.validate();
+            assertThat(sql(database, "SELECT count(*) FROM appointment.brands;")).isEqualTo("2");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.branches;")).isEqualTo("2");
+            assertThat(sql(database, """
+                SELECT b.display_name || '|' || br.name || '|' || br.address || '|' || br.google_maps_url
+                FROM appointment.brands b JOIN appointment.branches br ON br.brand_id=b.id
+                WHERE b.id='00000000-0000-0000-0000-000000000001';
+                """)).isEqualTo("Existing Brand|Merkez|Original address|https://maps.google.com/old");
+            assertThat(sql(database, "SELECT enabled || '|' || subscription_active || '|' || brand_id FROM appointment.users;"))
+                    .isEqualTo("true|false|00000000-0000-0000-0000-000000000001");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.branches WHERE accepting_appointments;" )).isEqualTo("0");
+            assertThat(sql(database, "SELECT count(*) FROM information_schema.columns WHERE table_schema='appointment' AND table_name='brands' AND column_name IN ('legacy_address', 'legacy_google_maps_url', 'legacy_platform_active');"))
+                    .isEqualTo("0");
+            assertThat(sql(database, "SELECT brand_id FROM appointment.audit_events;"))
+                    .isEqualTo("00000000-0000-0000-0000-000000000001");
+            // Branch ownership is one-to-many; adding branches will not require a schema redesign.
+            sql(database, "INSERT INTO appointment.branches(id, brand_id, name, address) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', 'Second', 'New address');");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.branches WHERE brand_id='00000000-0000-0000-0000-000000000001';")).isEqualTo("2");
+        }
+    }
+
+    private String sql(PostgreSQLContainer database, String query) throws Exception {
+        var result = database.execInContainer("psql", "-U", database.getUsername(), "-d", database.getDatabaseName(),
+                "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", query);
+        assertThat(result.getExitCode()).as(result.getStderr()).isZero();
+        return result.getStdout().strip();
+    }
+}
