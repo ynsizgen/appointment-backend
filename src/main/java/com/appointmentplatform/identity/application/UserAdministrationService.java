@@ -15,7 +15,12 @@ public class UserAdministrationService {
     private final UserAccountRepository users;
     private final Audit audit;
     private final java.time.Clock clock;
-    public UserAdministrationService(UserAccountRepository users, Audit audit, java.time.Clock clock) { this.users = users; this.audit = audit; this.clock = clock; }
+
+    public UserAdministrationService(UserAccountRepository users, Audit audit, java.time.Clock clock) {
+        this.users = users;
+        this.audit = audit; this.clock = clock;
+    }
+
     @PreAuthorize("hasRole('ADMIN')")
     public List<AccountDetails> list(int page, int size) {
         if (page < 0 || page > 100000 || size < 1 || size > 100)

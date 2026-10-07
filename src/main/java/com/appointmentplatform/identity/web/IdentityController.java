@@ -50,13 +50,15 @@ public class IdentityController {
         service.register(new RegistrationCommand(body.email(), body.password(), body.firstName(), body.lastName(), body.phone(), body.displayName(), body.address(), body.googleMapsUrl()));
         return new MessageResponse("Adres uygunsa doğrulama e-postası gönderilecektir.");
     }
-    @PostMapping("/verify-email") @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PostMapping("/verify-email")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void verify(@Valid @RequestBody VerificationRequest body, HttpServletRequest request) {
         limits.check("verification-ip",request.getRemoteAddr(),30,900);
         service.verify(body.token());
     }
 
-    @PostMapping("/forgot-brand-password") @ResponseStatus(HttpStatus.ACCEPTED)
+    @PostMapping("/forgot-brand-password")
+    @ResponseStatus(HttpStatus.ACCEPTED)
     public MessageResponse forgotBrandPassword(@Valid @RequestBody ForgotRequest body, HttpServletRequest request) {
         limits.check("password-reset-ip",request.getRemoteAddr(),10,3600);
         limits.check("password-reset-email",IdentityService.normalizeEmail(body.email()),3,3600);
