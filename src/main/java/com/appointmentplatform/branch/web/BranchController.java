@@ -9,7 +9,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/panel/branches")
 public class BranchController {
     private final BranchService service;
-    public BranchController(BranchService service) { this.service = service; }
+
+    public BranchController(BranchService service) {
+        this.service = service;
+    }
+
     @GetMapping
     public List<BranchResponse> own(@AuthenticationPrincipal(expression = "brandId") UUID brandId) {
         return service.own(brandId).stream().map(BranchResponse::from).toList();

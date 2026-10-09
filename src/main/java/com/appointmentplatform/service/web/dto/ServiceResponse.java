@@ -1,6 +1,6 @@
 package com.appointmentplatform.service.web.dto;
 
-import com.appointmentplatform.service.application.ServiceDetails;
+import com.appointmentplatform.service.ServiceDetails;
 
 import java.util.UUID;
 

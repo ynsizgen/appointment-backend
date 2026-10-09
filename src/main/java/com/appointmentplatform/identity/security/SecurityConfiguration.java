@@ -60,6 +60,7 @@ public class SecurityConfiguration {
             })
             .accessDeniedHandler((request,response,exception)->{
                 var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                exception.printStackTrace();
                 audit.failure(auth != null && auth.getPrincipal() instanceof AccountPrincipal p?p.id():null,"ACCESS");
                 if (exception instanceof MissingCsrfTokenException) {
                     writeProblem(response, 403, "CSRF token eksik",
@@ -71,7 +72,8 @@ public class SecurityConfiguration {
                     writeProblem(response, 403, "Erişim reddedildi",
                         "Bu işlemi gerçekleştirmek için gerekli yetkiye sahip değilsiniz.");
                 }
-            }));
+            }
+            ));
         return http.build();
     }
 

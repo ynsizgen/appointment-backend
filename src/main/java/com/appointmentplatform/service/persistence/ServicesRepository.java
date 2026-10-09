@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface ServicesRepository extends JpaRepository<Service, UUID> {
     List<Service> findByBrandId(UUID brandId);
+    boolean existsByIdAndBrandId(UUID id, UUID brandId);
 }

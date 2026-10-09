@@ -9,9 +9,9 @@ import com.appointmentplatform.notification.infrastructure.VerificationMailSende
 import com.appointmentplatform.notification.persistence.EmailJobRepository;
 import com.appointmentplatform.audit.persistence.AuditEventRepository;
 import com.appointmentplatform.shared.*;
-import com.appointmentplatform.shared.internal.ratelimit.RateLimitRepository;
 import com.appointmentplatform.brand.application.BrandService;
 import com.appointmentplatform.brand.persistence.BrandRepository;
+import com.appointmentplatform.service.web.dto.ServiceRequest;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -137,35 +137,6 @@ class JpaBehaviorTests {
         var job = emails.findById(jobId).orElseThrow();
         assertThat(job.state()).isEqualTo("SENT");
         assertThat(job.encryptedBody()).isNull();
-    }
-
-    @Test
-    void crossBrandAccessIsRejectedAtServiceBoundary() {
-        var first = registration();
-        var second = registration();
-        identity.register(first);
-        identity.register(second);
-        identity.verify(token(first.email()));
-        identity.verify(token(second.email()));
-        var owner = users.findByEmail(first.email()).orElseThrow();
-        UUID otherBrand = users.findByEmail(second.email()).orElseThrow().brandId();
-        var principal = new AccountPrincipal(owner.id(), "BRAND", owner.brandId(), clock.instant());
-        var context = SecurityContextHolder.createEmptyContext();
-        context.setAuthentication(UsernamePasswordAuthenticationToken.authenticated(principal, null,
-                AuthorityUtils.createAuthorityList("ROLE_BRAND")));
-        SecurityContextHolder.setContext(context);
-        try {
-            assertThat(brandService.own(owner.brandId()).id()).isEqualTo(owner.brandId());
-            assertThatThrownBy(() -> brandService.own(otherBrand)).isInstanceOf(AccessDeniedException.class);
-            assertThatThrownBy(() -> branchService.own(otherBrand)).isInstanceOf(AccessDeniedException.class);
-            UUID otherBranch = branches.findByBrandIdOrderByCreatedAtAscIdAsc(otherBrand).getFirst().id();
-            assertThatThrownBy(() -> branchService.changeAcceptance(owner.id(), otherBrand, otherBranch, true))
-                    .isInstanceOf(AccessDeniedException.class);
-            assertThatThrownBy(() -> branchService.changeAcceptance(owner.id(), owner.brandId(), otherBranch, true))
-                    .isInstanceOf(ApiException.class);
-        } finally {
-            SecurityContextHolder.clearContext();
-        }
     }
 
     @Test

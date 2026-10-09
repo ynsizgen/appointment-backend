@@ -109,6 +109,44 @@ class IdentityBrandIntegrationTests {
         assertThat(patch(admin, "/api/admin/tenants/" + brand.get("id").asText() + "/activation", "{\"active\":true}").statusCode()).isEqualTo(404);
     }
 
+    @Test
+    void brandServicesAreValidatedListedAndIsolated() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String ownerEmail = "service-owner-" + suffix + "@example.com";
+        String otherEmail = "service-other-" + suffix + "@example.com";
+        createVerifiedBrand(ownerEmail, "Service Brand");
+        createVerifiedBrand(otherEmail, "Other Service Brand");
+        var owner = loginBrand(ownerEmail);
+        var other = loginBrand(otherEmail);
+        String addPath = "/api/panel/addService";
+        String listPath = "/api/panel/services";
+
+        assertThat(json.readTree(get(owner, listPath).body()).size()).isZero();
+        var blankName = post(owner, addPath, "{\"displayName\":\"   \",\"durationMinutes\":30}");
+        assertThat(blankName.statusCode()).isEqualTo(400);
+        assertThat(json.readTree(blankName.body()).get("errors").has("displayName")).isTrue();
+        var longName = post(owner, addPath, "{\"displayName\":\"" + "x".repeat(201) + "\",\"durationMinutes\":30}");
+        assertThat(longName.statusCode()).isEqualTo(400);
+        assertThat(json.readTree(longName.body()).get("errors").has("displayName")).isTrue();
+        var invalidDuration = post(owner, addPath, "{\"displayName\":\"Kesim\",\"durationMinutes\":0}");
+        assertThat(invalidDuration.statusCode()).isEqualTo(400);
+        assertThat(json.readTree(invalidDuration.body()).get("errors").has("durationMinutes")).isTrue();
+        assertThat(json.readTree(get(owner, listPath).body()).size()).isZero();
+
+        assertThat(post(owner, addPath, "{\"displayName\":\"  Saç Kesimi  \",\"durationMinutes\":30}").statusCode()).isEqualTo(202);
+        assertThat(post(owner, addPath, "{\"displayName\":\"Saç Boyama\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
+        var services = json.readTree(get(owner, listPath).body());
+        assertThat(services.size()).isEqualTo(2);
+        assertThat(java.util.List.of(services.get(0).get("displayName").asText(), services.get(1).get("displayName").asText()))
+                .containsExactlyInAnyOrder("Saç Kesimi", "Saç Boyama");
+        assertThat(java.util.List.of(services.get(0).get("durationMinutes").asInt(), services.get(1).get("durationMinutes").asInt()))
+                .containsExactlyInAnyOrder(30, 60);
+        String ownerBrandId = json.readTree(get(owner, "/api/panel/brand").body()).get("id").asText();
+        assertThat(services.get(0).get("brandId").asText()).isEqualTo(ownerBrandId);
+        assertThat(services.get(1).get("brandId").asText()).isEqualTo(ownerBrandId);
+        assertThat(json.readTree(get(other, listPath).body()).size()).isZero();
+    }
+
     private String brandLogin(String email) {
         return "{\"email\":\"" + email + "\",\"password\":\"a-secure-password-123\"}";
     }

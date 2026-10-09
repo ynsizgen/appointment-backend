@@ -1,4 +1,4 @@
-package com.appointmentplatform.service.application;
+package com.appointmentplatform.service;
 
 import java.util.UUID;
 

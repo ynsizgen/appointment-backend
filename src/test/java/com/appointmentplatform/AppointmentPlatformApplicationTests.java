@@ -23,8 +23,8 @@ class AppointmentPlatformApplicationTests {
 
     @Test
     void migrationsRunAgainstRealPostgres() {
-        assertThat(flyway.info().applied()).hasSize(6);
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("6");
+        assertThat(flyway.info().applied()).hasSize(9);
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("9");
         flyway.validate();
     }
 

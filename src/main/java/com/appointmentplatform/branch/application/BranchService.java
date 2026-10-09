@@ -37,4 +37,12 @@ public class BranchService implements BranchOperations {
     private BranchDetails details(Branch b) {
         return new BranchDetails(b.id(), b.brandId(), b.name(), b.address(), b.googleMapsUrl(), b.acceptingAppointments());
     }
+
+    @Override
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public void requireOwnedBy(UUID branchId,UUID brandId) {
+        if (!repository.existsByIdAndBrandId(branchId,brandId)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı.");
+        }
+    }
 }

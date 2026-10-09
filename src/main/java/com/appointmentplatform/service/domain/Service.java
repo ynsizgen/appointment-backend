@@ -59,4 +59,5 @@ public class Service {
     public void setDurationMinutes(int durationMinutes) {
         this.durationMinutes = durationMinutes;
     }
+
 }
