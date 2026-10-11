@@ -653,6 +653,173 @@
             }
           ],
           "response": []
+        },
+        {
+          "name": "Specific Date",
+          "description": "Overrides one date only. Closing the branch makes all employee effective hours empty. Reset restores the weekly branch hours. These requests are alternatives, not a scenario to run together.",
+          "item": [
+            {
+              "name": "Get Hours for Date",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/schedule/{{scheduleDate}}",
+                "header": [],
+                "description": "dateOverride indicates whether the result comes from a date override or the weekly branch schedule."
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get('branchId') || !pm.variables.get('scheduleDate')) throw new Error('Set branchId and scheduleDate (YYYY-MM-DD) first.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Set Hours for Date",
+              "request": {
+                "method": "PUT",
+                "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/schedule/{{scheduleDate}}",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "description": "Replaces this date only; may open a normally closed weekday. Today and future dates only.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"workingHours\": [\n    {\n      \"startTime\": \"10:00\",\n      \"endTime\": \"12:30\"\n    },\n    {\n      \"startTime\": \"15:00\",\n      \"endTime\": \"20:00\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get('branchId') || !pm.variables.get('scheduleDate')) throw new Error('Set branchId and scheduleDate (YYYY-MM-DD) first.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Close Branch for Date",
+              "request": {
+                "method": "PUT",
+                "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/schedule/{{scheduleDate}}",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "description": "Closes the entire branch for this date, including employees with custom hours.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"workingHours\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get('branchId') || !pm.variables.get('scheduleDate')) throw new Error('Set branchId and scheduleDate (YYYY-MM-DD) first.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reset Date to Weekly Hours",
+              "request": {
+                "method": "DELETE",
+                "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/schedule/{{scheduleDate}}",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "description": "Removes only the date override. Restores the brand-defined weekly hours; does not delete the branch."
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!pm.variables.get('branchId') || !pm.variables.get('scheduleDate')) throw new Error('Set branchId and scheduleDate (YYYY-MM-DD) first.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
         }
       ]
     },

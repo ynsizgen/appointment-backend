@@ -70,3 +70,10 @@ Get Weekly Hours URL: `{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hou
 Get Employee 200, Get Weekly Hours 404 ise çalışan backend'in yeni controller'ı içerdiğini kontrol et; backend'i yeniden başlat ve Postman URL'sini yukarıdaki adresle karşılaştır.
 Postman environment değişkenleri collection değişkenlerini geçersiz kılabilir; `employeeId` için kullanılan gerçek değeri kontrol et.
 Saat kaydı olmaması 404 üretmez: branch saatleri kullanılır; branch'te de saat yoksa boş liste döner.
+
+## Branch için belirli bir tarih
+
+`Branches → Specific Date` altında Get / Set / Close / Reset istekleri bulunur.
+`branchId` ve `scheduleDate` değişkenlerini seç. Tarih URL'dedir; body yalnız `workingHours` içerir.
+Boş liste o gün branch'i kapatır; employee özel saatleri bunu aşamaz. Reset yalnız tarih kaydını kaldırır, haftalık saatleri geri getirir.
+Set ile normalde kapalı bir gün açılabilir. Branch saatlerini kullanan employee'ler bu yeni saatleri kullanır; kendi haftalık ayarı olan employee'ler o ayarla sınırlı kalır.

@@ -19,7 +19,7 @@ One BRAND account owns one Brand through a unique `users.brand_id`. ADMIN accoun
 
 `POST /api/panel/branches` accepts `name`, `address`, optional HTTPS `googleMapsUrl`, and a non-empty `workingHours` list of `{dayOfWeek, startTime, endTime}`. Days use Java enum names (e.g. `MONDAY`); times use local Turkey wall-clock time (e.g. `08:00`). Branch and hours are saved atomically. A day with no interval is closed. Multiple non-overlapping intervals per day are supported; overnight intervals are not supported.
 
-`GET /api/panel/branches/{id}/working-hours` reads the weekly schedule. `PUT` at the same URL replaces the whole schedule with `{ "workingHours": [...] }`; an empty list closes every day. Updates lock the branch to serialize schedule replacements. These endpoints require the owning brand. Existing branches are preserved without inventing default hours; owners must configure their schedules. Branch date-specific exceptions and appointment availability calculation are not implemented yet.
+`GET /api/panel/branches/{id}/working-hours` reads the weekly schedule. `PUT` at the same URL replaces the whole schedule with `{ "workingHours": [...] }`; an empty list closes every day. Updates lock the branch to serialize schedule replacements. These endpoints require the owning brand. Existing branches are preserved without inventing default hours; owners must configure their schedules. Branch date-specific exceptions are supported; appointment availability calculation is not implemented yet.
 
 ## Account and branch state
 
@@ -97,7 +97,7 @@ Run `./mvnw verify` with Docker running. Testcontainers uses isolated PostgreSQL
 
 ## Future work
 
-Branch creation UI, branch date-specific schedule exceptions, availability, appointments, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
+Branch creation UI, availability, appointments, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
 
 ## Employee working hours
 
@@ -116,4 +116,10 @@ No custom weekly record means branch inheritance. A custom week with no interval
 
 All employee schedule mutations lock the employee row to serialize concurrent updates. Date overrides are unique by employee/date. Effective daily hours always intersect with current branch hours, so later branch changes cannot expose closed time; inactive employees return no effective hours. The weekly endpoint shows configuration, not availability. Existing employees inherit branch hours without a data backfill. Branches without configured hours are closed.
 
-These are schedule APIs, not booking APIs. Appointment conflict checks, available booking slots and branch date-specific overrides remain future work. No appointments are cancelled by schedule changes.
+These are schedule APIs, not booking APIs. Appointment conflict checks and available booking slots remain future work. No appointments are cancelled by schedule changes.
+
+## Branch date overrides
+
+`GET /api/panel/branches/{branchId}/schedule/{date}` returns `{date, dateOverride, workingHours}`. `PUT` replaces that date with `{workingHours: [{startTime, endTime}]}`; an empty list explicitly closes it. `DELETE` removes the override and restores the owner-defined weekly schedule. Dates use `YYYY-MM-DD`; edits are limited to today/future dates in Europe/Istanbul. Multiple intervals are allowed without overlap, and a date override can open a normally closed weekday. Writes lock the branch row and persist the header/intervals atomically; employee/date and branch/date overrides are independent.
+
+Employee daily resolution and date validation now use effective branch date hours. Employees inheriting branch hours follow the override directly; employee custom weekly/date hours are intersected with it. Closing a branch yields no employee hours, even with employee date overrides. Restoring branch weekly hours preserves employee customizations. Appointment conflict prevention will be added with booking; these APIs currently manage schedules only.

@@ -21,7 +21,9 @@ public class BranchService implements BranchOperations {
     private final BranchRepository repository;
     private final Audit audit;
     private final BranchWorkingHoursRepository hours;
-    public BranchService(BranchRepository repository, Audit audit, BranchWorkingHoursRepository hours) {
+    private final BranchDateScheduleService dates;
+    public BranchService(BranchRepository repository, Audit audit, BranchWorkingHoursRepository hours, BranchDateScheduleService dates) {
+        this.dates = dates;
         this.repository = repository; this.audit = audit;
         this.hours = hours;
     }
@@ -108,6 +110,12 @@ public class BranchService implements BranchOperations {
         requireOwnedBy(branchId, brandId);
         return hours.findAllByBranchId(branchId).stream()
                 .map(h -> new BranchWorkingInterval(h.dayOfWeek(), h.startTime(), h.endTime())).toList();
+    }
+
+    @Override
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public com.appointmentplatform.branch.BranchDailySchedule dailyHours(UUID branchId, UUID brandId, java.time.LocalDate date) {
+        return dates.daily(brandId, branchId, date);
     }
 
     private void validateMapsUrl(String value) {

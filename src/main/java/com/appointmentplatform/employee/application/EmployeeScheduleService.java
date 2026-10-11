@@ -59,7 +59,7 @@ public class EmployeeScheduleService {
 
     public EmployeeDailyScheduleDetails daily(UUID brandId, UUID employeeId, LocalDate date) {
         var employee = owned(brandId, employeeId, false);
-        var branch = branchHours(brandId, employee);
+        var branch = dateBranchHours(brandId, employee, date);
         var override = overrides.findByEmployeeIdAndDate(employeeId, date);
         List<EmployeeTimeIntervalDetails> configured;
         String source;
@@ -68,11 +68,11 @@ public class EmployeeScheduleService {
             source = "DATE_OVERRIDE";
         } else {
             var schedule = weeklyConfiguration(brandId, employee);
-            configured = forDay(schedule.workingHours(), date.getDayOfWeek());
+            configured = schedule.usesBranchHours() ? branch : forDay(schedule.workingHours(), date.getDayOfWeek());
             source = schedule.usesBranchHours() ? "BRANCH" : "EMPLOYEE_WEEKLY";
         }
         configured = merge(configured);
-        var effective = employee.isActive() ? intersect(configured, forDay(branch, date.getDayOfWeek())) : List.<EmployeeTimeIntervalDetails>of();
+        var effective = employee.isActive() ? intersect(configured, branch) : List.<EmployeeTimeIntervalDetails>of();
         return new EmployeeDailyScheduleDetails(date, source, employee.isActive(), configured, effective);
     }
 
@@ -81,7 +81,7 @@ public class EmployeeScheduleService {
         var employee = owned(brandId, employeeId, true);
         requireEditable(date);
         var intervals = request.workingHours().stream().map(h -> new EmployeeTimeIntervalDetails(h.startTime(), h.endTime())).toList();
-        validate(intervals, forDay(branchHours(brandId, employee), date.getDayOfWeek()));
+        validate(intervals, dateBranchHours(brandId, employee, date));
         var override = overrides.findByEmployeeIdAndDate(employeeId, date)
                 .orElseGet(() -> new EmployeeScheduleOverride(employeeId, date));
         override.replace(intervals.stream().map(h -> new EmployeeTimeInterval(h.startTime(), h.endTime())).toList());
@@ -135,6 +135,11 @@ public class EmployeeScheduleService {
 
     private List<EmployeeTimeIntervalDetails> forDay(List<EmployeeWeeklyIntervalDetails> hours, DayOfWeek day) {
         return hours.stream().filter(h -> h.dayOfWeek() == day).map(h -> new EmployeeTimeIntervalDetails(h.startTime(), h.endTime())).toList();
+    }
+
+    private List<EmployeeTimeIntervalDetails> dateBranchHours(UUID brandId, Employee employee, LocalDate date) {
+        return branches.dailyHours(employee.getBranchId(), brandId, date).workingHours().stream()
+                .map(h -> new EmployeeTimeIntervalDetails(h.startTime(), h.endTime())).toList();
     }
 
     private void requireEditable(LocalDate date) {
