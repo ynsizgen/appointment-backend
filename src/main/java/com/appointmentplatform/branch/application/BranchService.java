@@ -1,6 +1,11 @@
 package com.appointmentplatform.branch.application;
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.branch.BranchWorkingInterval;
 import com.appointmentplatform.branch.domain.Branch;
+import com.appointmentplatform.branch.domain.BranchWorkingHours;
+import com.appointmentplatform.branch.persistence.BranchWorkingHoursRepository;
+import com.appointmentplatform.branch.web.dto.*;
+import java.net.URI;
 import com.appointmentplatform.branch.persistence.BranchRepository;
 import com.appointmentplatform.audit.Audit;
 import com.appointmentplatform.shared.ApiException;
@@ -15,12 +20,63 @@ import org.springframework.transaction.annotation.*;
 public class BranchService implements BranchOperations {
     private final BranchRepository repository;
     private final Audit audit;
-    public BranchService(BranchRepository repository, Audit audit) { this.repository = repository; this.audit = audit; }
-    @Override
-    @Transactional(propagation = Propagation.MANDATORY)
-    public UUID registerInitial(UUID brandId, String address, String googleMapsUrl) {
-        return repository.saveAndFlush(new Branch(UUID.randomUUID(), brandId, "Merkez", address, googleMapsUrl)).id();
+    private final BranchWorkingHoursRepository hours;
+    public BranchService(BranchRepository repository, Audit audit, BranchWorkingHoursRepository hours) {
+        this.repository = repository; this.audit = audit;
+        this.hours = hours;
     }
+
+    @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId and #actorId == authentication.principal.id")
+    public BranchDetails create(UUID actorId, UUID brandId, BranchCreateRequest request) {
+        validateMapsUrl(request.googleMapsUrl());
+        validateHours(request.workingHours());
+        var branch = repository.saveAndFlush(new Branch(UUID.randomUUID(), brandId,
+                request.name().strip(), request.address().strip(), request.googleMapsUrl()));
+        saveHours(branch.id(), request.workingHours());
+        audit.record(actorId, brandId, "BRANCH_CREATED", "SUCCESS");
+        return details(branch);
+    }
+
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public List<WorkingHoursDetails> workingHours(UUID brandId, UUID branchId) {
+        requireOwnedBy(branchId, brandId);
+        return hours.findAllByBranchId(branchId).stream()
+                .sorted(Comparator.comparing(BranchWorkingHours::dayOfWeek).thenComparing(BranchWorkingHours::startTime))
+                .map(h -> new WorkingHoursDetails(h.dayOfWeek(), h.startTime(), h.endTime())).toList();
+    }
+
+    @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId and #actorId == authentication.principal.id")
+    public void replaceWorkingHours(UUID actorId, UUID brandId, UUID branchId, WeeklyScheduleRequest request) {
+        repository.findForUpdate(branchId, brandId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı."));
+        validateHours(request.workingHours());
+        hours.deleteByBranchId(branchId);
+        hours.flush();
+        saveHours(branchId, request.workingHours());
+        audit.record(actorId, brandId, "BRANCH_WORKING_HOURS_CHANGED", "SUCCESS");
+    }
+
+    private void saveHours(UUID branchId, List<WorkingHoursRequest> intervals) {
+        hours.saveAll(intervals.stream().map(h -> new BranchWorkingHours(UUID.randomUUID(), branchId,
+                h.dayOfWeek(), h.startTime(), h.endTime())).toList());
+    }
+
+    private void validateHours(List<WorkingHoursRequest> intervals) {
+        var sorted = intervals.stream().sorted(Comparator.comparing(WorkingHoursRequest::dayOfWeek)
+                .thenComparing(WorkingHoursRequest::startTime)).toList();
+        WorkingHoursRequest previous = null;
+        for (var current : sorted) {
+            if (!current.startTime().isBefore(current.endTime()))
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Bitiş saati başlangıç saatinden sonra olmalıdır.");
+            if (previous != null && previous.dayOfWeek() == current.dayOfWeek()
+                    && current.startTime().isBefore(previous.endTime()))
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Aynı günün çalışma aralıkları çakışamaz.");
+            previous = current;
+        }
+    }
+
     @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public List<BranchDetails> own(UUID brandId) {
         return repository.findByBrandIdOrderByCreatedAtAscIdAsc(brandId).stream().map(this::details).toList();
@@ -43,6 +99,25 @@ public class BranchService implements BranchOperations {
     public void requireOwnedBy(UUID branchId,UUID brandId) {
         if (!repository.existsByIdAndBrandId(branchId,brandId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı.");
+        }
+    }
+
+    @Override
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public List<BranchWorkingInterval> weeklyHours(UUID branchId, UUID brandId) {
+        requireOwnedBy(branchId, brandId);
+        return hours.findAllByBranchId(branchId).stream()
+                .map(h -> new BranchWorkingInterval(h.dayOfWeek(), h.startTime(), h.endTime())).toList();
+    }
+
+    private void validateMapsUrl(String value) {
+        if (value == null || value.isBlank()) return;
+        try {
+            URI uri = URI.create(value);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null)
+                throw new IllegalArgumentException();
+        } catch (IllegalArgumentException exception) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Konum bağlantısı geçerli bir HTTPS adresi olmalıdır.");
         }
     }
 }

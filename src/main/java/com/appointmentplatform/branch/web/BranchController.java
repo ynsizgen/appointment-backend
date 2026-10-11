@@ -14,6 +14,30 @@ public class BranchController {
         this.service = service;
     }
 
+    @PostMapping
+    @ResponseStatus(org.springframework.http.HttpStatus.CREATED)
+    public BranchResponse create(
+            @AuthenticationPrincipal(expression = "id") UUID actorId,
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @Valid @RequestBody BranchCreateRequest request) {
+        return BranchResponse.from(service.create(actorId, brandId, request));
+    }
+
+    @GetMapping("/{id}/working-hours")
+    public List<WorkingHoursResponse> workingHours(@AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @PathVariable UUID id) {
+        return service.workingHours(brandId, id).stream().map(WorkingHoursResponse::from).toList();
+    }
+
+    @PutMapping("/{id}/working-hours")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void replaceWorkingHours(@AuthenticationPrincipal(expression = "id") UUID actorId,
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @PathVariable UUID id,
+            @Valid @RequestBody WeeklyScheduleRequest request) {
+        service.replaceWorkingHours(actorId, brandId, id, request);
+    }
+
     @GetMapping
     public List<BranchResponse> own(@AuthenticationPrincipal(expression = "brandId") UUID brandId) {
         return service.own(brandId).stream().map(BranchResponse::from).toList();

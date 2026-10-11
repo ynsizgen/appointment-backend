@@ -1,2 +1,2 @@
-@org.springframework.modulith.ApplicationModule(allowedDependencies = {"branch", "shared"})
+@org.springframework.modulith.ApplicationModule(allowedDependencies = {"shared"})
 package com.appointmentplatform.brand;

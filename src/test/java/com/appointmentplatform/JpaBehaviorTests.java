@@ -57,7 +57,7 @@ class JpaBehaviorTests {
     }
 
     @Test
-    void concurrentVerificationCreatesExactlyOneAccountBrandAndBranch() throws Exception {
+    void concurrentVerificationCreatesExactlyOneAccountAndBrandWithoutBranch() throws Exception {
         var command = registration();
         identity.register(command);
         String token = token(command.email());
@@ -75,8 +75,7 @@ class JpaBehaviorTests {
         assertThat(user.enabled()).isTrue();
         assertThat(user.isSubscriptionActive()).isFalse();
         var initial = branches.findByBrandIdOrderByCreatedAtAscIdAsc(user.brandId());
-        assertThat(initial).hasSize(1);
-        assertThat(initial.getFirst().acceptingAppointments()).isFalse();
+        assertThat(initial).isEmpty();
         assertThat(registrations.findByEmail(command.email())).isEmpty();
     }
 
@@ -99,7 +98,7 @@ class JpaBehaviorTests {
         var command = registration();
         String raw = crypto.token();
         registrations.saveAndFlush(new PendingRegistration(UUID.randomUUID(), command.email(), "unused",
-                "Test", "User", command.phone(), "Brand", "Address", null,
+                "Test", "User", command.phone(), "Brand",
                 Crypto.hash(raw), clock.instant().minusSeconds(1)));
         assertThatThrownBy(() -> identity.verify(raw)).isInstanceOf(ApiException.class);
         assertThat(users.findByEmail(command.email())).isEmpty();
@@ -160,7 +159,7 @@ class JpaBehaviorTests {
 
     private RegistrationCommand registration() {
         return new RegistrationCommand("jpa-" + UUID.randomUUID() + "@example.com", "a-secure-password-123",
-                "Ada", "Lovelace", "+905551112233", "JPA Brand", "İstanbul", null);
+                "Ada", "Lovelace", "+905551112233", "JPA Brand");
     }
 
     private String token(String email) {

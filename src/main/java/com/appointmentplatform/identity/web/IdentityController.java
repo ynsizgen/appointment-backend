@@ -47,7 +47,7 @@ public class IdentityController {
     public MessageResponse register(@Valid @RequestBody RegistrationRequest body, HttpServletRequest request) {
         limits.check("registration-ip",request.getRemoteAddr(),10,3600);
         limits.check("registration-email",IdentityService.normalizeEmail(body.email()),3,3600);
-        service.register(new RegistrationCommand(body.email(), body.password(), body.firstName(), body.lastName(), body.phone(), body.displayName(), body.address(), body.googleMapsUrl()));
+        service.register(new RegistrationCommand(body.email(), body.password(), body.firstName(), body.lastName(), body.phone(), body.displayName()));
         return new MessageResponse("Adres uygunsa doğrulama e-postası gönderilecektir.");
     }
     @PostMapping("/verify-email")

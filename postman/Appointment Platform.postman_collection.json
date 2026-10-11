@@ -78,6 +78,11 @@
       "key": "serviceId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "scheduleDate",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -221,7 +226,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"{{brandEmail}}\",\n  \"password\": \"{{brandPassword}}\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"phone\": \"+905551112233\",\n  \"displayName\": \"Example Brand\",\n  \"address\": \"İstanbul, Türkiye\",\n  \"googleMapsUrl\": \"https://maps.google.com/example\"\n}",
+                  "raw": "{\n  \"email\": \"{{brandEmail}}\",\n  \"password\": \"{{brandPassword}}\",\n  \"firstName\": \"Ada\",\n  \"lastName\": \"Lovelace\",\n  \"phone\": \"+905551112233\",\n  \"displayName\": \"Example Brand\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -229,7 +234,7 @@
                   }
                 },
                 "url": "{{baseUrl}}/api/auth/registrations",
-                "description": "Starts brand registration. Expected status: 202. Retrieve the verification token from the local Mailpit message and save it as verificationToken."
+                "description": "Starts account and brand registration. Verification creates no branch. After login, use Branches > Create Branch to enter address and weekly working hours."
               },
               "event": [
                 {
@@ -449,8 +454,48 @@
     },
     {
       "name": "Branches",
-      "description": "Brand branches and appointment acceptance settings. Get Own Branches saves branchId.",
+      "description": "Create a branch after brand registration and login. Select open days and hours explicitly; omitted days are closed. Monday–Saturday 08:00–20:00 is an editable example, not a server default.",
       "item": [
+        {
+          "name": "Create Branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "{{csrfHeader}}",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/panel/branches",
+            "description": "Edit name, address and workingHours. Each row is an interval on an open day. Saves branchId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Merkez\",\n  \"address\": \"İstanbul, Türkiye\",\n  \"googleMapsUrl\": \"https://maps.google.com/example\",\n  \"workingHours\": [\n    {\n      \"dayOfWeek\": \"MONDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"TUESDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"WEDNESDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"THURSDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"FRIDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"SATURDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('branchId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
         {
           "name": "Get Own Branches",
           "request": {
@@ -465,7 +510,68 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));",
-                  "if (pm.response.code === 200 && pm.response.json().length) pm.collectionVariables.set('branchId', pm.response.json()[0].id);"
+                  "if (pm.response.code === 200) { const branches = pm.response.json(); pm.collectionVariables.set('branchId', branches.length ? branches[0].id : ''); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Working Hours",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/working-hours",
+            "description": "Reads the weekly schedule. Omitted days are closed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.test('Schedule is an array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Replace Working Hours",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "{{csrfHeader}}",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/working-hours",
+            "description": "Replaces ALL weekly hours. Multiple intervals per day are allowed without overlap. An empty workingHours array closes every day.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workingHours\": [\n    {\n      \"dayOfWeek\": \"MONDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"TUESDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"WEDNESDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"THURSDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"FRIDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    },\n    {\n      \"dayOfWeek\": \"SATURDAY\",\n      \"startTime\": \"08:00\",\n      \"endTime\": \"20:00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 204', () => pm.response.to.have.status(204));"
                 ]
               }
             }
@@ -955,6 +1061,302 @@
                         "type": "text/javascript",
                         "exec": [
                           "pm.test('Status is 409', () => pm.response.to.have.status(409));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Working Hours",
+          "description": "Choose an existing employeeId belonging to the logged-in brand. Weekly Schedule controls recurring hours; Specific Date controls one date. Get Employee and Get Weekly Hours must use the same employeeId and session.",
+          "item": [
+            {
+              "name": "Weekly Schedule",
+              "description": "Get reads the configured week. Set replaces the entire week. Reset removes only employee weekly customization; the employee is not deleted. Date overrides remain.",
+              "item": [
+                {
+                  "name": "Get Weekly Hours",
+                  "request": {
+                    "method": "GET",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours",
+                    "header": [],
+                    "description": "usesBranchHours=true means inherited. Otherwise workingHours is the configured employee week; omitted days are closed."
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                },
+                {
+                  "name": "Set Weekly Hours",
+                  "request": {
+                    "method": "PUT",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours",
+                    "header": [
+                      {
+                        "key": "{{csrfHeader}}",
+                        "value": "{{csrfToken}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "description": "Replaces the entire employee week. Edit to fit the branch schedule. Empty workingHours closes all days; it does not restore inheritance.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"workingHours\": [\n    {\n      \"dayOfWeek\": \"MONDAY\",\n      \"startTime\": \"09:00\",\n      \"endTime\": \"12:00\"\n    }\n  ]\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                },
+                {
+                  "name": "Reset to Branch Hours",
+                  "request": {
+                    "method": "DELETE",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours",
+                    "header": [
+                      {
+                        "key": "{{csrfHeader}}",
+                        "value": "{{csrfToken}}"
+                      }
+                    ],
+                    "description": "Removes custom weekly hours. Date overrides remain in effect."
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "Specific Date",
+              "description": "Choose scheduleDate (YYYY-MM-DD). Get returns effective hours. Set overrides that date; Close saves an empty override; Reset removes it. These are alternatives, not a sequence to run together.",
+              "item": [
+                {
+                  "name": "Get Effective Hours for Date",
+                  "request": {
+                    "method": "GET",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/schedule/{{scheduleDate}}",
+                    "header": [],
+                    "description": "Returns source, configuredHours and effective workingHours limited by branch hours. Inactive employees have no effective hours. These are working intervals, not appointment slots."
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');",
+                          "if (!pm.variables.get('scheduleDate')) throw new Error('Set scheduleDate to today or a future date in YYYY-MM-DD format (Europe/Istanbul).');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                },
+                {
+                  "name": "Set Hours for Date",
+                  "request": {
+                    "method": "PUT",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/schedule/{{scheduleDate}}",
+                    "header": [
+                      {
+                        "key": "{{csrfHeader}}",
+                        "value": "{{csrfToken}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "description": "Overrides the entire selected date. Must fit branch hours for that day. Today and future dates only.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"workingHours\": [\n    {\n      \"startTime\": \"10:00\",\n      \"endTime\": \"12:00\"\n    }\n  ]\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');",
+                          "if (!pm.variables.get('scheduleDate')) throw new Error('Set scheduleDate to today or a future date in YYYY-MM-DD format (Europe/Istanbul).');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                },
+                {
+                  "name": "Close Employee for Date",
+                  "request": {
+                    "method": "PUT",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/schedule/{{scheduleDate}}",
+                    "header": [
+                      {
+                        "key": "{{csrfHeader}}",
+                        "value": "{{csrfToken}}"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ],
+                    "description": "An explicit empty override closes this employee for the selected date.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"workingHours\": []\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');",
+                          "if (!pm.variables.get('scheduleDate')) throw new Error('Set scheduleDate to today or a future date in YYYY-MM-DD format (Europe/Istanbul).');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 204', () => pm.response.to.have.status(204));"
+                        ]
+                      }
+                    }
+                  ],
+                  "response": []
+                },
+                {
+                  "name": "Reset Date to Weekly Hours",
+                  "request": {
+                    "method": "DELETE",
+                    "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/schedule/{{scheduleDate}}",
+                    "header": [
+                      {
+                        "key": "{{csrfHeader}}",
+                        "value": "{{csrfToken}}"
+                      }
+                    ],
+                    "description": "Restores employee weekly hours or branch inheritance for this date. Today and future dates only."
+                  },
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "const employeeId = pm.variables.get('employeeId'); if (!employeeId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) throw new Error('Set employeeId to an existing employee UUID. Use Employees > Get Branch Employees to choose one. Check environment variables too: they override collection variables.');",
+                          "if (!pm.variables.get('scheduleDate')) throw new Error('Set scheduleDate to today or a future date in YYYY-MM-DD format (Europe/Istanbul).');"
+                        ]
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "type": "text/javascript",
+                        "exec": [
+                          "pm.test('Status is 204', () => pm.response.to.have.status(204));"
                         ]
                       }
                     }

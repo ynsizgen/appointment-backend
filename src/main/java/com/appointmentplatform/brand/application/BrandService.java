@@ -2,7 +2,6 @@ package com.appointmentplatform.brand.application;
 import com.appointmentplatform.brand.*;
 import com.appointmentplatform.brand.domain.Brand;
 import com.appointmentplatform.brand.persistence.BrandRepository;
-import com.appointmentplatform.branch.BranchOperations;
 import com.appointmentplatform.shared.ApiException;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -14,15 +13,13 @@ import org.springframework.transaction.annotation.*;
 @Transactional(readOnly = true)
 public class BrandService implements BrandOperations {
     private final BrandRepository repository;
-    private final BranchOperations branches;
-    public BrandService(BrandRepository repository, BranchOperations branches) {
-        this.repository = repository; this.branches = branches;
+    public BrandService(BrandRepository repository) {
+        this.repository = repository;
     }
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public UUID register(BrandRegistration registration) {
         var brand = repository.saveAndFlush(new Brand(UUID.randomUUID(), registration.displayName()));
-        branches.registerInitial(brand.id(), registration.address(), registration.googleMapsUrl());
         return brand.id();
     }
     @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")

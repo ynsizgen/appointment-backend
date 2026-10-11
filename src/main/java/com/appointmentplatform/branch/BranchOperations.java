@@ -1,8 +1,10 @@
 package com.appointmentplatform.branch;
 import java.util.UUID;
-/** Registration contract; participates in the caller's transaction. */
+import  java.util.*;
+/** Branch ownership checks for other modules. */
 public interface BranchOperations {
-    UUID registerInitial(UUID brandId, String address, String googleMapsUrl);
+
+    List<BranchWorkingInterval> weeklyHours(UUID branchId, UUID brandId);
 
     void requireOwnedBy(UUID branchId, UUID brandId);
 }

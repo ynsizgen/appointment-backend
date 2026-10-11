@@ -1,8 +1,6 @@
 package com.appointmentplatform.employee.web;
 
 import com.appointmentplatform.employee.application.EmployeeService;
-import com.appointmentplatform.employee.application.EmployeeServiceAssignmentDetails;
-import com.appointmentplatform.employee.domain.Employee;
 import com.appointmentplatform.employee.web.dto.*;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -20,6 +18,7 @@ public class EmployeeController {
     public EmployeeController(EmployeeService employeeService) {
         this.employeeService = employeeService;
     }
+
     @GetMapping("/{employeeId}")
     public EmployeeResponse getEmployeeById(
             @AuthenticationPrincipal(expression = "brandId") UUID brandId,

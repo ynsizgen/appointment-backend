@@ -6,16 +6,20 @@ Java 21, Spring Boot 4.1.1, Spring Modulith 2.1.1, PostgreSQL, JPA, Flyway and s
 
 - `identity`: accounts, email verification, login, password reset, admin account status management.
 - `brand`: brand identity and registration orchestration.
-- `branch`: physical branches, address/maps data and appointment-acceptance preference.
+- `branch`: branch onboarding, address/maps data, weekly working hours and appointment-acceptance preference.
 - `notification`: transactional encrypted mail queue and worker.
 - `audit`: security and management events scoped by `brandId`.
 - `shared`: crypto, rate limits and API errors.
 
-Dependencies: Identity → Brand → Branch; Identity → Notification; Identity and Branch → Audit. Modules access only their own repositories. Public module contracts are at package roots. `ApplicationModules.verify()` checks the declared boundaries.
+Dependencies: Identity → Brand; Identity → Notification; Identity and Branch → Audit. Modules access only their own repositories. Public module contracts are at package roots. `ApplicationModules.verify()` checks the declared boundaries.
 
-One BRAND account owns one Brand through a unique `users.brand_id`. ADMIN accounts have no brand. A Brand can have multiple Branch records; the current registration creates only the first “Merkez” branch. There is no separate Store entity or add-branch API yet.
+One BRAND account owns one Brand through a unique `users.brand_id`. ADMIN accounts have no brand. A Brand can have multiple Branch records. Registration creates no branch; owners create their branches after logging in.
 
-`POST /api/auth/registrations` keeps the existing flat request. `displayName` names the Brand; `address` and `googleMapsUrl` belong to its first Branch. Email verification creates account, brand and branch in one transaction.
+`POST /api/auth/registrations` accepts account fields and `displayName`, without address/maps fields. Email verification creates the account and brand in one transaction.
+
+`POST /api/panel/branches` accepts `name`, `address`, optional HTTPS `googleMapsUrl`, and a non-empty `workingHours` list of `{dayOfWeek, startTime, endTime}`. Days use Java enum names (e.g. `MONDAY`); times use local Turkey wall-clock time (e.g. `08:00`). Branch and hours are saved atomically. A day with no interval is closed. Multiple non-overlapping intervals per day are supported; overnight intervals are not supported.
+
+`GET /api/panel/branches/{id}/working-hours` reads the weekly schedule. `PUT` at the same URL replaces the whole schedule with `{ "workingHours": [...] }`; an empty list closes every day. Updates lock the branch to serialize schedule replacements. These endpoints require the owning brand. Existing branches are preserved without inventing default hours; owners must configure their schedules. Branch date-specific exceptions and appointment availability calculation are not implemented yet.
 
 ## Account and branch state
 
@@ -35,6 +39,9 @@ Authentication, CSRF, email verification, password reset and logout routes are u
 |---|---|---|
 | GET /api/panel/brand | BRAND | — |
 | GET /api/panel/branches | BRAND | — |
+| POST /api/panel/branches | BRAND | `name`, `address`, `googleMapsUrl`, `workingHours` |
+| GET /api/panel/branches/{id}/working-hours | Owning BRAND | — |
+| PUT /api/panel/branches/{id}/working-hours | Owning BRAND | `workingHours` (full replacement) |
 | PATCH /api/panel/branches/{id}/appointment-acceptance | Owning BRAND | `{"acceptingAppointments":true}` |
 | GET /api/admin/users?page=0&size=20 | ADMIN | — |
 | PATCH /api/admin/users/{id}/status | ADMIN | `{"enabled":true,"subscriptionActive":true}` |
@@ -90,4 +97,23 @@ Run `./mvnw verify` with Docker running. Testcontainers uses isolated PostgreSQL
 
 ## Future work
 
-Branch creation UI/API, services, employees, availability, appointments, public booking screens, SMS and payment-provider integration.
+Branch creation UI, branch date-specific schedule exceptions, availability, appointments, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
+
+## Employee working hours
+
+All endpoints below are scoped to the employee's owning brand under `/api/panel/employee/{employeeId}`:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/working-hours` | Weekly configuration and `usesBranchHours` flag |
+| PUT | `/working-hours` | Replace entire custom week with `workingHours` entries (`dayOfWeek`, `startTime`, `endTime`) |
+| DELETE | `/working-hours` | Restore branch inheritance, preserving date overrides |
+| GET | `/schedule/{date}` | Resolve one date, returning source, active flag, configured and effective hours |
+| PUT | `/schedule/{date}` | Replace date override with `workingHours` entries (`startTime`, `endTime`) |
+| DELETE | `/schedule/{date}` | Remove date override and fall back to weekly configuration |
+
+No custom weekly record means branch inheritance. A custom week with no intervals means all days closed. An empty date override means that date is closed. Date overrides take precedence over employee weekly settings. Only today/future date overrides may be changed, using Europe/Istanbul to determine today. Intervals must be non-overlapping, within one day and inside branch working hours. Adjacent branch intervals count as continuous opening.
+
+All employee schedule mutations lock the employee row to serialize concurrent updates. Date overrides are unique by employee/date. Effective daily hours always intersect with current branch hours, so later branch changes cannot expose closed time; inactive employees return no effective hours. The weekly endpoint shows configuration, not availability. Existing employees inherit branch hours without a data backfill. Branches without configured hours are closed.
+
+These are schedule APIs, not booking APIs. Appointment conflict checks, available booking slots and branch date-specific overrides remain future work. No appointments are cancelled by schedule changes.

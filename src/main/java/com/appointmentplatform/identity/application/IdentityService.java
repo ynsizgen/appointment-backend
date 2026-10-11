@@ -7,7 +7,6 @@ import com.appointmentplatform.identity.security.Totp;
 import com.appointmentplatform.notification.*;
 import com.appointmentplatform.shared.*;
 import com.appointmentplatform.brand.*;
-import java.net.URI;
 import java.time.*;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
@@ -63,7 +62,6 @@ public class IdentityService {
 
     @Transactional
     public void  register(RegistrationCommand request) {
-        validateMapsUrl(request.googleMapsUrl());
         String email = normalizeEmail(request.email());
         String passwordHash = passwords.encode(request.password());
         registrations.lockEmail(email);
@@ -75,7 +73,7 @@ public class IdentityService {
         Instant expires = clock.instant().plus(ttl);
         var pending = new PendingRegistration(id, email, passwordHash, request.firstName().strip(),
                 request.lastName().strip(), request.phone(), request.displayName().strip(),
-                request.address().strip(), request.googleMapsUrl(), Crypto.hash(token), expires);
+                Crypto.hash(token), expires);
         registrations.saveAndFlush(pending);
         emails.enqueue(new VerificationEmail(id, email,
                 "Brand üyeliğinizi tamamlamak için bağlantıyı açıp doğrulamayı onaylayın:\n"
@@ -122,7 +120,7 @@ public class IdentityService {
         var pending = registrations.findByTokenHashForUpdate(Crypto.hash(token)).orElseThrow(this::invalidVerification);
         if (!pending.expiresAt().isAfter(clock.instant()))
             throw invalidVerification();
-        UUID brandId = brands.register(new BrandRegistration(pending.displayName(), pending.address(), pending.googleMapsUrl()));
+        UUID brandId = brands.register(new BrandRegistration(pending.displayName()));
         var user = new UserAccount(UUID.randomUUID(), pending.email(), pending.passwordHash(),
                 pending.firstName(), pending.lastName(), pending.phone(), Role.BRAND, brandId, false,true, null, -1);
         users.save(user);
@@ -166,14 +164,4 @@ public class IdentityService {
         return new ApiException(HttpStatus.BAD_REQUEST, "Parola sıfırlama bağlantısı geçersiz, kullanılmış veya süresi dolmuş.");
     }
 
-    private void validateMapsUrl(String value) {
-        if (value == null || value.isBlank()) return;
-        try {
-            URI uri = URI.create(value);
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null)
-                throw new IllegalArgumentException();
-        } catch (IllegalArgumentException exception) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Konum bağlantısı geçerli bir HTTPS adresi olmalıdır.");
-        }
-    }
 }
