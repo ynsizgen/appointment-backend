@@ -592,6 +592,19 @@ class IdentityBrandIntegrationTests {
         assertThat(saved.getStartsAt()).isEqualTo(date.atTime(10, 0).atZone(java.time.ZoneId.of("Europe/Istanbul")).toInstant());
         assertThat(saved.getEndsAt()).isEqualTo(saved.getStartsAt().plusSeconds(3600));
         assertThat(saved.getStatus()).isEqualTo(com.appointmentplatform.appointment.AppointmentStatus.PENDING);
+        // Real PostgreSQL query: excluded statuses must not block availability.
+        var pending = com.appointmentplatform.appointment.AppointmentStatus.PENDING;
+        var approved = com.appointmentplatform.appointment.AppointmentStatus.APPROVED;
+        var employeeUuid = UUID.fromString(employeeId);
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(approved))).isEmpty();
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(pending, approved)))
+                .extracting(a -> a.getId()).containsExactly(saved.getId());
+        saved.setStatus(approved);
+        appointments.saveAndFlush(saved);
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(pending))).isEmpty();
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(pending, approved)))
+                .extracting(a -> a.getId()).containsExactly(saved.getId());
+
         assertThat(post(customer, "/api/public/appointment/create/" + otherBranchId, body).statusCode()).isEqualTo(400);
         assertThat(post(customer, publicPath, body.replace("10:00", "11:30")).statusCode()).isEqualTo(400);
         assertThat(post(customer, "/api/panel/appointment/create", body).statusCode()).isEqualTo(401);

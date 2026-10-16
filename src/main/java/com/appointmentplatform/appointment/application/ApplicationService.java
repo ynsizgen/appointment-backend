@@ -68,9 +68,8 @@ public class ApplicationService {
 
 
 
-        record DateRange(LocalDateTime start, LocalDateTime end) {}
-
-        var appointments = appointmentRepository.findBlockingInRange(employeeId,rangeStart,rangeEnd)
+        record DateRange(LocalDateTime start, LocalDateTime end) {}var appointments = appointmentRepository.findBlockingInRange(employeeId, rangeStart, rangeEnd,
+                        List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED))
                 .stream()
                 .map(a -> new DateRange(a.getStartsAt().atZone(zone).toLocalDateTime(),
                         a.getEndsAt().atZone(zone).toLocalDateTime()))

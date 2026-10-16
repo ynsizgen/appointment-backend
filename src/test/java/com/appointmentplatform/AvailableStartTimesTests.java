@@ -1,6 +1,7 @@
 package com.appointmentplatform;
 
 import com.appointmentplatform.appointment.application.ApplicationService;
+import com.appointmentplatform.appointment.AppointmentStatus;
 import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.branch.BranchOperations;
@@ -60,7 +61,8 @@ class AvailableStartTimesTests {
         }
         when(schedules.daily(brand, employee, date)).thenReturn(new EmployeeDailyScheduleDetails(date, "BRANCH", true, intervals, intervals));
         when(services.findById(service)).thenReturn(new ServiceDetails(service, brand, "Service", duration));
-        when(repository.findBlockingInRange(employee, date.atStartOfDay(zone).toInstant(), date.plusDays(1).atStartOfDay(zone).toInstant())).thenReturn(appointments);
+        when(repository.findBlockingInRange(employee, date.atStartOfDay(zone).toInstant(), date.plusDays(1).atStartOfDay(zone).toInstant(),
+                List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED))).thenReturn(appointments);
         var application = new ApplicationService(schedules, employees, services,
                 Clock.fixed(date.atTime(7, 0).atZone(zone).toInstant(), ZoneOffset.UTC), repository, mock(BranchOperations.class));
         List<LocalTime> wanted = expected.isEmpty() ? List.of() : Arrays.stream(expected.split(",")).map(LocalTime::parse).toList();
