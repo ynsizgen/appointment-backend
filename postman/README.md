@@ -52,7 +52,7 @@ Branch çalışma saatlerini Get Working Hours ile okuyabilir, Replace Working H
 `Employees → Working Hours` altında haftalık ve tarihe özel işlemler bulunur.
 
 - İlk durumda employee branch saatlerini kullanır.
-- Set Weekly Hours: tüm haftayı değiştirir; olmayan günler kapalıdır. Boş liste employee'yi bütün hafta kapatır.
+- Set Weekly Hours: haftalık özel ayarların tamamını değiştirir. `workingHours` içindeki günler özel saatleri kullanır, `closedDays` içindeki günler kapalıdır. İkisinde de olmayan günler branch saatlerini kullanır. İki liste de boşsa bütün günler branch'ten alınır.
 - Reset to Branch Hours: özel haftalık saatleri kaldırır. Tarih bazlı kayıtlar korunur.
 - Tarih istekleri için `scheduleDate` değişkenine `YYYY-MM-DD` biçiminde bugün veya gelecek bir tarih yaz.
 - Close Employee for Date: yalnız o tarihi kapatır. Reset Date to Weekly Hours: o gün için haftalık saatlere geri döner.
@@ -64,6 +64,8 @@ Branch çalışma saatlerini Get Working Hours ile okuyabilir, Replace Working H
 - **Weekly Schedule:** haftalık saatleri gör, değiştir veya branch saatlerine geri dön.
 - **Specific Date:** seçilen tarihin saatlerini gör, değiştir, günü kapat veya haftalık ayara geri dön.
 - DELETE istekleri employee kaydını silmez; yalnız ilgili özel saat ayarını kaldırır.
+
+Get Weekly Hours cevabında `configuredHours` employee özel saatlerini, `closedDays` kapatılan günleri, `inheritedDays` branch’ten alınan günleri gösterir. `workingHours` birleşik haftalık sonuçtur. Düzenlerken PUT için `configuredHours` ve `closedDays` kullan; birleşik listeyi geri gönderme.
 
 Get Weekly Hours URL: `{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours`.
 Önce aynı `employeeId` ile Get Employee çalıştır. Employee bulunamıyorsa seçilen ID'yi kontrol et. Şube bulunamıyorsa giriş yapılan brand ile employee'nin branch'i eşleşmiyor olabilir.
@@ -77,3 +79,30 @@ Saat kaydı olmaması 404 üretmez: branch saatleri kullanılır; branch'te de s
 `branchId` ve `scheduleDate` değişkenlerini seç. Tarih URL'dedir; body yalnız `workingHours` içerir.
 Boş liste o gün branch'i kapatır; employee özel saatleri bunu aşamaz. Reset yalnız tarih kaydını kaldırır, haftalık saatleri geri getirir.
 Set ile normalde kapalı bir gün açılabilir. Branch saatlerini kullanan employee'ler bu yeni saatleri kullanır; kendi haftalık ayarı olan employee'ler o ayarla sınırlı kalır.
+
+## Uygun randevu başlangıçları
+
+`Appointments → Availability → Get Available Slots` isteğini kullan.
+
+1. Brand olarak giriş yap.
+2. `employeeId`, `serviceId` ve `scheduleDate` değerlerini seç. Service employee'ye atanmış olmalı.
+3. GET isteğini gönder; body gerekmez.
+4. Cevaptaki `availableAppointmentSlotDetails.localTimes` başlangıç saatlerini içerir.
+
+Saatler hizmet süresine göre üretilir; hizmetin tamamı çalışma aralığına sığmalıdır. Türkiye saatine göre en az bir saat sonrası listelenir. Kapalı/pasif employee veya geçmiş tarih için boş liste normaldir.
+Bu endpoint henüz mevcut randevuları çıkarmaz; randevu oluşturmaz. Frontend'in rezervasyon garantisi olarak kullanabileceği son sürüm değildir.
+
+
+Günlük öncelik: employee tarih kaydı → employee'nin o haftanın gününe özel saat/kapalı ayarı → branch'in o tarihteki saatleri. Tarih kaydındaki boş `workingHours` açıkça kapalı demektir; branch'e geri dönmez. Tarih kaydını DELETE ile kaldırınca bu sıra yeniden uygulanır.
+
+V13: Daha önce boş haftalık planla bütün hafta kapatılmış employee'ler için yedi gün `closedDays` olarak korunur. Eski dolu planlarda eksik günler artık branch'ten alınır. Bu explicit kapatmaları kaldırmak için Reset to Branch Hours kullan.
+
+## Randevu oluşturma — 12 Ekim 2026
+
+- `Appointments → Brand Creation → Create Appointment as Brand`: brand login sonrası kullanılır. Geçmiş/yakın saatlere kayıt açabilir.
+- `Appointments → Customer Creation → Create Appointment as Customer`: anonim denemek için logout yap, tekrar CSRF al. Cookie ile CSRF aynı oturuma ait olmalı. Başlangıç en az 1 saat sonrası olmalı.
+- `branchId`, `employeeId`, `serviceId`, `scheduleDate`, `appointmentStartTime` değişkenlerini doldur. Çalışan ilgili şubeye, hizmet ilgili brand'e ait ve çalışana atanmış olmalı.
+- `customerEmail` isteğe bağlıdır; alanı silerek deneyebilirsin. `source` gönderilmez; backend belirler. Başarılı cevap 201/PENDING olur, `appointmentId` kaydedilir; başlangıç/bitiş UTC olarak döner.
+- Otomatik integration testi: anonim müşteri kaydı, brand kaydı, source/tarihlerin DB'de doğrulanması, boş email, yanlış şube, çalışma aralığı dışı, customer geçmiş tarih reddi, brand geçmiş tarih kabulü ve anonim panel erişimi reddi.
+- Henüz OTP, abonelik/kabul kontrolü ve randevu çakışma engeli yok. Aynı saate tekrar POST göndermek şu an yeni kayıt oluşturabilir.
+- Collection dosyasını Postman'e yeniden import et; açık uygulamadaki kopya kendiliğinden güncellenmez.

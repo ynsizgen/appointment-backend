@@ -1,4 +1,5 @@
 package com.appointmentplatform.branch.application;
+import com.appointmentplatform.branch.BranchDailySchedule;
 import com.appointmentplatform.branch.BranchOperations;
 import com.appointmentplatform.branch.BranchWorkingInterval;
 import com.appointmentplatform.branch.domain.Branch;
@@ -97,7 +98,13 @@ public class BranchService implements BranchOperations {
     }
 
     @Override
-    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public UUID brandId(UUID branchId) {
+        return repository.findById(branchId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı."))
+                .brandId();
+    }
+
+    @Override
     public void requireOwnedBy(UUID branchId,UUID brandId) {
         if (!repository.existsByIdAndBrandId(branchId,brandId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı.");
@@ -113,8 +120,7 @@ public class BranchService implements BranchOperations {
     }
 
     @Override
-    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
-    public com.appointmentplatform.branch.BranchDailySchedule dailyHours(UUID branchId, UUID brandId, java.time.LocalDate date) {
+    public BranchDailySchedule dailyHours(UUID branchId, UUID brandId, java.time.LocalDate date) {
         return dates.daily(brandId, branchId, date);
     }
 

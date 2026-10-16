@@ -1,6 +1,7 @@
 package com.appointmentplatform.employee.application;
 
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.employee.EmployeeOperations;
 import com.appointmentplatform.employee.domain.Employee;
 import com.appointmentplatform.employee.domain.EmployeeServiceAssignment;
 import com.appointmentplatform.employee.persistence.EmployeeRepository;
@@ -21,13 +22,12 @@ import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
-public class EmployeeService {
+public class EmployeeService implements EmployeeOperations {
+
     private final EmployeeRepository employeeRepository;
     private final BranchOperations branchOperations;
     private final EmployeeServiceAssignmentRepository employeeServiceAssignmentRepository;
     private final ServiceOperations serviceOperations;
-
-
 
     public EmployeeService(EmployeeRepository employeeRepository, BranchOperations branchOperations, EmployeeServiceAssignmentRepository employeeServiceAssignmentRepository, ServiceOperations serviceOperations) {
         this.employeeRepository = employeeRepository;
@@ -94,7 +94,7 @@ public class EmployeeService {
 
     @Transactional
     @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
-    public void unassignServiceFromEmployee(
+    public void unassignServiceFromEmployee (
             UUID brandId, UUID employeeId, UUID serviceId) {
 
         var employee = employeeRepository.findById(employeeId).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Employee bulunamadı."));
@@ -126,5 +126,26 @@ public class EmployeeService {
 
         employee.setActive(request.active());
 
+    }
+
+    @Override
+    public UUID branchId(UUID employeeId) {
+        return employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Employee bulunamadı."))
+                .getBranchId();
+    }
+
+    @Override
+    public void requireServiceAssigned(UUID brandId, UUID employeeId, UUID serviceId) {
+
+        var employee = employeeRepository.findById(employeeId).orElseThrow(() ->
+                        new ApiException(HttpStatus.NOT_FOUND, "Employee bulunamadı."));
+
+        branchOperations.requireOwnedBy(employee.getBranchId(), brandId);
+
+        if (!employeeServiceAssignmentRepository.existsByEmployeeIdAndServiceId(employeeId, serviceId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Seçilen hizmet bu çalışana atanmamış."
+            );
+        }
     }
 }

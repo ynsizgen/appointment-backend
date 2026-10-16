@@ -1,0 +1,49 @@
+package com.appointmentplatform.appointment.web;
+
+import com.appointmentplatform.appointment.application.ApplicationService;
+import com.appointmentplatform.appointment.web.dto.AppointmentCreationResponse;
+import com.appointmentplatform.appointment.web.dto.AvailableAppointmentSlotResponse;
+import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
+import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/panel/appointment")
+public class AppointmentController {
+
+    private final ApplicationService applicationService;
+
+    public AppointmentController(ApplicationService applicationService) {
+        this.applicationService = applicationService;
+    }
+
+
+    @GetMapping("/available-slot/{serviceId}/{employeeId}/{date}")
+    public AvailableAppointmentSlotResponse getAvailableStartTimes(
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @PathVariable UUID serviceId,
+            @PathVariable UUID employeeId,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
+    ){
+
+
+        return new AvailableAppointmentSlotResponse(applicationService.getAvailableStartTimes(brandId,serviceId,employeeId,date));
+    }
+
+
+    @PostMapping("/create")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AppointmentCreationResponse createByBrand(
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @RequestBody @Valid AppointmentCreateRequest request
+    ){
+        return AppointmentCreationResponse.from(applicationService.createByBrand(brandId, request));
+    }
+
+}

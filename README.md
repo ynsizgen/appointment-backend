@@ -19,7 +19,7 @@ One BRAND account owns one Brand through a unique `users.brand_id`. ADMIN accoun
 
 `POST /api/panel/branches` accepts `name`, `address`, optional HTTPS `googleMapsUrl`, and a non-empty `workingHours` list of `{dayOfWeek, startTime, endTime}`. Days use Java enum names (e.g. `MONDAY`); times use local Turkey wall-clock time (e.g. `08:00`). Branch and hours are saved atomically. A day with no interval is closed. Multiple non-overlapping intervals per day are supported; overnight intervals are not supported.
 
-`GET /api/panel/branches/{id}/working-hours` reads the weekly schedule. `PUT` at the same URL replaces the whole schedule with `{ "workingHours": [...] }`; an empty list closes every day. Updates lock the branch to serialize schedule replacements. These endpoints require the owning brand. Existing branches are preserved without inventing default hours; owners must configure their schedules. Branch date-specific exceptions are supported; appointment availability calculation is not implemented yet.
+`GET /api/panel/branches/{id}/working-hours` reads the weekly schedule. `PUT` at the same URL replaces the whole schedule with `{ "workingHours": [...] }`; an empty list closes every day. Updates lock the branch to serialize schedule replacements. These endpoints require the owning brand. Existing branches are preserved without inventing default hours; owners must configure their schedules. Branch date-specific exceptions are supported; appointment start-time preview and initial creation APIs are implemented, with limitations below.
 
 ## Account and branch state
 
@@ -29,7 +29,7 @@ One BRAND account owns one Brand through a unique `users.brand_id`. ADMIN accoun
 | User.subscriptionActive | false | Admin, based on payment | Subscription entitlement, independent of panel login |
 | Branch.acceptingAppointments | false | Brand owner | Preference to accept new appointments |
 
-Future booking screens and new appointment creation require `subscriptionActive && acceptingAppointments`. Public booking and appointment creation do not exist yet; no booking-access endpoint is claimed by this release. Deactivating a subscription does not block panel access or existing-booking management. Payment-provider integration is future work.
+Future booking screens and new appointment creation require `subscriptionActive && acceptingAppointments`. Initial appointment creation APIs exist, but this entitlement check is not yet enforced in creation. Deactivating a subscription does not block panel access or existing-booking management. Payment-provider integration is future work.
 
 ## APIs
 
@@ -97,7 +97,7 @@ Run `./mvnw verify` with Docker running. Testcontainers uses isolated PostgreSQL
 
 ## Future work
 
-Branch creation UI, availability, appointments, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
+Branch creation UI, booking conflict prevention, booking lifecycle, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
 
 ## Employee working hours
 
@@ -106,20 +106,39 @@ All endpoints below are scoped to the employee's owning brand under `/api/panel/
 | Method | Path | Behavior |
 | --- | --- | --- |
 | GET | `/working-hours` | Weekly configuration and `usesBranchHours` flag |
-| PUT | `/working-hours` | Replace entire custom week with `workingHours` entries (`dayOfWeek`, `startTime`, `endTime`) |
+| PUT | `/working-hours` | Replace weekday customizations with `workingHours` entries and optional `closedDays` enum array |
 | DELETE | `/working-hours` | Restore branch inheritance, preserving date overrides |
 | GET | `/schedule/{date}` | Resolve one date, returning source, active flag, configured and effective hours |
 | PUT | `/schedule/{date}` | Replace date override with `workingHours` entries (`startTime`, `endTime`) |
 | DELETE | `/schedule/{date}` | Remove date override and fall back to weekly configuration |
 
-No custom weekly record means branch inheritance. A custom week with no intervals means all days closed. An empty date override means that date is closed. Date overrides take precedence over employee weekly settings. Only today/future date overrides may be changed, using Europe/Istanbul to determine today. Intervals must be non-overlapping, within one day and inside branch working hours. Adjacent branch intervals count as continuous opening.
+No custom weekly record means branch inheritance. Weekly overrides are per weekday: explicit `closedDays` are closed, days with configured intervals use those intervals, and all other weekdays inherit the branch. An empty employee `workingHours` list with empty/omitted `closedDays` restores inheritance for every day. PUT replaces the whole override set; it is not a patch. An empty date override means that date is closed. Date overrides take precedence over employee weekday settings, including explicit weekday closures. With no date override, an unconfigured weekday uses effective branch date hours (including branch overrides), not merely branch weekly hours. Only today/future date overrides may be changed, using Europe/Istanbul to determine today. Intervals must be non-overlapping, within one day and inside branch working hours. Adjacent branch intervals count as continuous opening.
 
-All employee schedule mutations lock the employee row to serialize concurrent updates. Date overrides are unique by employee/date. Effective daily hours always intersect with current branch hours, so later branch changes cannot expose closed time; inactive employees return no effective hours. The weekly endpoint shows configuration, not availability. Existing employees inherit branch hours without a data backfill. Branches without configured hours are closed.
+All employee schedule mutations lock the employee row to serialize concurrent updates. Date overrides are unique by employee/date. Effective daily hours always intersect with current branch hours, so later branch changes cannot expose closed time; inactive employees return no effective hours. The weekly endpoint returns combined `workingHours`, employee-only `configuredHours`, `closedDays` and `inheritedDays`. `usesBranchHours` means all seven days inherit; false can mean partial inheritance. Use configuredHours/closedDays when editing, not the combined intervals. These are working hours, not booking availability. V13 preserves legacy empty schedules as seven explicit closedDays; omitted weekdays of non-empty legacy schedules now inherit branch hours. Branches without configured hours are closed.
 
-These are schedule APIs, not booking APIs. Appointment conflict checks and available booking slots remain future work. No appointments are cancelled by schedule changes.
+These are schedule APIs, not booking APIs. Available start-time preview exists; subtracting existing appointments and preventing conflicts remain future work. No appointments are cancelled by schedule changes.
 
 ## Branch date overrides
 
 `GET /api/panel/branches/{branchId}/schedule/{date}` returns `{date, dateOverride, workingHours}`. `PUT` replaces that date with `{workingHours: [{startTime, endTime}]}`; an empty list explicitly closes it. `DELETE` removes the override and restores the owner-defined weekly schedule. Dates use `YYYY-MM-DD`; edits are limited to today/future dates in Europe/Istanbul. Multiple intervals are allowed without overlap, and a date override can open a normally closed weekday. Writes lock the branch row and persist the header/intervals atomically; employee/date and branch/date overrides are independent.
 
 Employee daily resolution and date validation now use effective branch date hours. Employees inheriting branch hours follow the override directly; employee custom weekly/date hours are intersected with it. Closing a branch yields no employee hours, even with employee date overrides. Restoring branch weekly hours preserves employee customizations. Appointment conflict prevention will be added with booking; these APIs currently manage schedules only.
+
+## Available slot preview
+
+`GET /api/panel/appointment/available-slot/{serviceId}/{employeeId}/{date}` requires BRAND authentication, service ownership and an employee-service assignment. It returns `{ "availableAppointmentSlotDetails": { "serviceId": "...", "employeeId": "...", "localTimes": [...] } }`.
+
+Candidate starts advance by the selected service duration from each effective employee working interval. The entire service must fit before the interval end. Starts must be at least one hour after the injected clock in Europe/Istanbul. Past dates and closed/inactive schedules return an empty list. This preview does not yet subtract existing bookings or enforce booking/subscription rules; no reservation is made.
+
+Tests include fixed-clock lead-time boundaries, midnight rollover, split working intervals, different service durations, past/closed schedules, HTTP ownership/assignment checks and branch date closures.
+
+## Appointment creation — 12 October 2026
+
+- `POST /api/panel/appointment/create`: owning BRAND session; past and near-future appointments are allowed if they fit working hours.
+- `POST /api/public/appointment/create/{branchId}`: no login required; CSRF token and matching cookie are still required. The employee must belong to this exact branch. Customer starts must be at least one hour ahead.
+- Both accept `employeeId`, `serviceId`, `date` (YYYY-MM-DD), `startTime` (HH:mm), customer first/last name and phone; email is optional. `source` is determined by the endpoint.
+- Both return 201 with id, branchId, employeeId, serviceId, serviceName, durationMinutes, startsAt, endsAt and status. Source is stored, but is not included in the response.
+- Istanbul local date/time is converted to `Instant`; PostgreSQL stores `timestamptz`. Status is initially PENDING; service name and duration are snapshots.
+- V14 creates appointments, V15 adds source, V16 aligns types and makes source mandatory. V16 stops if legacy time-only rows exist: their appointment dates must be recovered, not guessed. Applied migrations must not be edited.
+- Appointment accesses employee/branch/service through module-root interfaces. Shared schedule reads and relationship checks do not require a BRAND session; panel entry methods retain authorization.
+- Remaining work: OTP verification, subscription/acceptance gating, overlap prevention including database concurrency protection, lifecycle actions, notifications and occupied-time subtraction. Passing current tests does not mean these features exist.

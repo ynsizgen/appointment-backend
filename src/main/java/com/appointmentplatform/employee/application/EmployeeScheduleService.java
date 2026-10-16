@@ -1,8 +1,12 @@
 package com.appointmentplatform.employee.application;
 
+import com.appointmentplatform.employee.EmployeeDailyScheduleDetails;
+import com.appointmentplatform.employee.EmployeeTimeIntervalDetails;
+
 import com.appointmentplatform.branch.BranchOperations;
 import com.appointmentplatform.employee.domain.*;
 import com.appointmentplatform.employee.persistence.*;
+import com.appointmentplatform.employee.EmployeeScheduleOperations;
 import com.appointmentplatform.employee.web.dto.*;
 import com.appointmentplatform.shared.ApiException;
 import org.springframework.http.HttpStatus;
@@ -14,8 +18,7 @@ import java.util.*;
 
 @Service
 @Transactional(readOnly = true)
-@PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
-public class EmployeeScheduleService {
+public class EmployeeScheduleService implements EmployeeScheduleOperations {
     private final EmployeeRepository employees;
     private final EmployeeWeeklyScheduleRepository weekly;
     private final EmployeeScheduleOverrideRepository overrides;
@@ -31,15 +34,21 @@ public class EmployeeScheduleService {
         this.clock = clock;
     }
 
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public EmployeeWeeklyScheduleDetails weekly(UUID brandId, UUID employeeId) {
         var employee = owned(brandId, employeeId, false);
         return weeklyConfiguration(brandId, employee);
     }
 
     @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void replaceWeekly(UUID brandId, UUID employeeId, EmployeeWeeklyScheduleRequest request) {
         var employee = owned(brandId, employeeId, true);
         var branchHours = branchHours(brandId, employee);
+        for (var h : request.workingHours()) {
+            if (request.closedDays().contains(h.dayOfWeek()))
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Kapalı gün için çalışma saati girilemez.");
+        }
         for (var day : DayOfWeek.values()) {
             var intervals = request.workingHours().stream().filter(h -> h.dayOfWeek() == day)
                     .map(h -> new EmployeeTimeIntervalDetails(h.startTime(), h.endTime())).toList();
@@ -48,10 +57,12 @@ public class EmployeeScheduleService {
         var schedule = weekly.findById(employeeId).orElseGet(() -> new EmployeeWeeklySchedule(employeeId));
         schedule.replace(request.workingHours().stream()
                 .map(h -> new EmployeeWeeklyInterval(h.dayOfWeek(), h.startTime(), h.endTime())).toList());
+        schedule.replaceClosedDays(request.closedDays());
         weekly.save(schedule);
     }
 
     @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void resetWeekly(UUID brandId, UUID employeeId) {
         owned(brandId, employeeId, true);
         weekly.findById(employeeId).ifPresent(weekly::delete);
@@ -67,9 +78,18 @@ public class EmployeeScheduleService {
             configured = override.get().intervals().stream().map(h -> new EmployeeTimeIntervalDetails(h.startTime(), h.endTime())).toList();
             source = "DATE_OVERRIDE";
         } else {
-            var schedule = weeklyConfiguration(brandId, employee);
-            configured = schedule.usesBranchHours() ? branch : forDay(schedule.workingHours(), date.getDayOfWeek());
-            source = schedule.usesBranchHours() ? "BRANCH" : "EMPLOYEE_WEEKLY";
+            var schedule = weekly.findById(employeeId);
+            var day = date.getDayOfWeek();
+            if (schedule.isPresent() && schedule.get().closedDays().contains(day)) {
+                configured = List.of();
+                source = "EMPLOYEE_WEEKLY";
+            } else {
+                var ownHours = schedule.stream().flatMap(s -> s.intervals().stream())
+                        .filter(h -> h.dayOfWeek() == day)
+                        .map(h -> new EmployeeTimeIntervalDetails(h.startTime(), h.endTime())).toList();
+                configured = ownHours.isEmpty() ? branch : ownHours;
+                source = ownHours.isEmpty() ? "BRANCH" : "EMPLOYEE_WEEKLY";
+            }
         }
         configured = merge(configured);
         var effective = employee.isActive() ? intersect(configured, branch) : List.<EmployeeTimeIntervalDetails>of();
@@ -77,6 +97,7 @@ public class EmployeeScheduleService {
     }
 
     @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void replaceDate(UUID brandId, UUID employeeId, LocalDate date, EmployeeDateScheduleRequest request) {
         var employee = owned(brandId, employeeId, true);
         requireEditable(date);
@@ -89,6 +110,7 @@ public class EmployeeScheduleService {
     }
 
     @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void resetDate(UUID brandId, UUID employeeId, LocalDate date) {
         owned(brandId, employeeId, true);
         requireEditable(date);
@@ -102,29 +124,30 @@ public class EmployeeScheduleService {
         return employee;
     }
 
-    private EmployeeWeeklyScheduleDetails weeklyConfiguration(
-            UUID brandId, Employee employee) {
-
+    private EmployeeWeeklyScheduleDetails weeklyConfiguration(UUID brandId, Employee employee) {
         var schedule = weekly.findById(employee.getId());
-
-        if (schedule.isEmpty()) {
-            var hours = branchHours(brandId, employee);
-            return new EmployeeWeeklyScheduleDetails(true, hours);
+        var branch = branchHours(brandId, employee);
+        var configured = schedule.stream().flatMap(s -> s.intervals().stream())
+                .map(h -> new EmployeeWeeklyIntervalDetails(h.dayOfWeek(), h.startTime(), h.endTime()))
+                .sorted(Comparator.comparing(EmployeeWeeklyIntervalDetails::dayOfWeek)
+                        .thenComparing(EmployeeWeeklyIntervalDetails::startTime)).toList();
+        Set<DayOfWeek> closed = schedule.map(s -> Set.copyOf(s.closedDays())).orElse(Set.of());
+        var inherited = new ArrayList<DayOfWeek>();
+        var effective = new ArrayList<EmployeeWeeklyIntervalDetails>();
+        for (var day : DayOfWeek.values()) {
+            if (closed.contains(day)) continue;
+            var own = forDay(configured, day);
+            var branchDay = forDay(branch, day);
+            if (own.isEmpty()) {
+                inherited.add(day);
+                own = branchDay;
+            }
+            for (var interval : intersect(own, branchDay)) {
+                effective.add(new EmployeeWeeklyIntervalDetails(day, interval.startTime(), interval.endTime()));
+            }
         }
-
-        var hours = schedule.get().intervals().stream()
-                .map(h -> new EmployeeWeeklyIntervalDetails(
-                        h.dayOfWeek(),
-                        h.startTime(),
-                        h.endTime()
-                ))
-                .sorted(
-                        Comparator.comparing(EmployeeWeeklyIntervalDetails::dayOfWeek)
-                                .thenComparing(EmployeeWeeklyIntervalDetails::startTime)
-                )
-                .toList();
-
-        return new EmployeeWeeklyScheduleDetails(false, hours);
+        return new EmployeeWeeklyScheduleDetails(inherited.size() == 7, effective, configured,
+                closed.stream().sorted().toList(), inherited);
     }
 
     private List<EmployeeWeeklyIntervalDetails> branchHours(UUID brandId, Employee employee) {

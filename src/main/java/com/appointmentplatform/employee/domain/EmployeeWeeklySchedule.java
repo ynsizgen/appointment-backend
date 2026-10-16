@@ -12,6 +12,17 @@ public class EmployeeWeeklySchedule {
     @CollectionTable(name = "employee_weekly_hours", schema = "appointment", joinColumns = @JoinColumn(name = "employee_id"))
     private List<EmployeeWeeklyInterval> intervals = new ArrayList<>();
 
+    @ElementCollection
+    @CollectionTable(name = "employee_weekly_closed_days", schema = "appointment", joinColumns = @JoinColumn(name = "employee_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_of_week", nullable = false, length = 9)
+    private Set<java.time.DayOfWeek> closedDays = new HashSet<>();
+
+    public Set<java.time.DayOfWeek> closedDays() { return closedDays; }
+    public void replaceClosedDays(Set<java.time.DayOfWeek> days) {
+        closedDays.clear(); closedDays.addAll(days);
+    }
+
     protected EmployeeWeeklySchedule() {}
 
     public EmployeeWeeklySchedule(UUID employeeId) {

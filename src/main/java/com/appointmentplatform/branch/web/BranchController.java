@@ -3,6 +3,8 @@ import com.appointmentplatform.branch.application.BranchService;
 import com.appointmentplatform.branch.web.dto.*;
 import jakarta.validation.Valid;
 import java.util.*;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 @RestController
@@ -30,7 +32,7 @@ public class BranchController {
     }
 
     @PutMapping("/{id}/working-hours")
-    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void replaceWorkingHours(@AuthenticationPrincipal(expression = "id") UUID actorId,
             @AuthenticationPrincipal(expression = "brandId") UUID brandId,
             @PathVariable UUID id,

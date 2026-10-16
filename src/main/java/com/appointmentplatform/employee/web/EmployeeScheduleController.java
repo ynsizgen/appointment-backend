@@ -52,7 +52,8 @@ public class EmployeeScheduleController {
     @DeleteMapping("/schedule/{date}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetDate(@AuthenticationPrincipal(expression = "brandId") UUID brandId,
-            @PathVariable UUID employeeId, @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @PathVariable UUID employeeId,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         service.resetDate(brandId, employeeId, date);
     }
 }

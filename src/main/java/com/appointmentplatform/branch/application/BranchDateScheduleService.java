@@ -13,8 +13,8 @@ import java.util.*;
 
 @Service
 @Transactional(readOnly = true)
-@PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
-public class BranchDateScheduleService {
+public class BranchDateScheduleService implements BranchDateScheduleOperations{
+
     private final BranchRepository branches;
     private final BranchWorkingHoursRepository hours;
     private final BranchScheduleOverrideRepository overrides;
@@ -32,7 +32,9 @@ public class BranchDateScheduleService {
         return new BranchDailySchedule(date, override.isPresent(), intervals.stream()
                 .sorted(Comparator.comparing(BranchTimeInterval::startTime)).toList());
     }
+
     @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void replace(UUID brandId, UUID branchId, LocalDate date, BranchDateScheduleRequest request) {
         branches.findForUpdate(branchId, brandId).orElseThrow(this::missing);
         requireEditable(date);
@@ -52,6 +54,7 @@ public class BranchDateScheduleService {
         overrides.save(override);
     }
     @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void reset(UUID brandId, UUID branchId, LocalDate date) {
         branches.findForUpdate(branchId, brandId).orElseThrow(this::missing);
         requireEditable(date);

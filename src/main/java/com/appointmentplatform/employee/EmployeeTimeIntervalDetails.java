@@ -1,4 +1,4 @@
-package com.appointmentplatform.employee.application;
+package com.appointmentplatform.employee;
 
 import java.time.LocalTime;
 

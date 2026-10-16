@@ -1,6 +1,6 @@
 package com.appointmentplatform.employee.web.dto;
 
-import com.appointmentplatform.employee.application.EmployeeDailyScheduleDetails;
+import com.appointmentplatform.employee.EmployeeDailyScheduleDetails;
 import java.time.LocalDate;
 import java.util.List;
 

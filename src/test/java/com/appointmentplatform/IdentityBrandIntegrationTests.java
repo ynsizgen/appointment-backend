@@ -366,7 +366,7 @@ class IdentityBrandIntegrationTests {
         var clipped = json.readTree(get(owner, dailyPath).body());
         assertThat(clipped.get("configuredHours").get(0).get("startTime").asText()).startsWith("09:00");
         assertThat(clipped.get("workingHours").get(0).get("startTime").asText()).startsWith("10:00");
-        assertThat(mutate(owner, "PUT", weeklyPath, "{\"workingHours\":[]}").statusCode()).isEqualTo(204);
+        assertThat(mutate(owner, "PUT", weeklyPath, "{\"workingHours\":[],\"closedDays\":[\"MONDAY\"]}").statusCode()).isEqualTo(204);
         assertThat(json.readTree(get(owner, weeklyPath).body()).get("usesBranchHours").asBoolean()).isFalse();
         assertThat(json.readTree(get(owner, dailyPath).body()).get("workingHours").size()).isZero();
         assertThat(mutate(owner, "DELETE", weeklyPath, "").statusCode()).isEqualTo(204);
@@ -453,7 +453,7 @@ class IdentityBrandIntegrationTests {
         assertThat(json.readTree(get(owner, employeeTuesday).body()).get("workingHours").size()).isEqualTo(2);
         assertThat(mutate(owner, "PUT", employeeTuesday, special).statusCode()).isEqualTo(204);
         assertThat(mutate(owner, "DELETE", employeeTuesday, "").statusCode()).isEqualTo(204);
-        assertThat(mutate(owner, "PUT", employeeBase + "/working-hours", "{\"workingHours\":[]}").statusCode()).isEqualTo(204);
+        assertThat(mutate(owner, "PUT", employeeBase + "/working-hours", "{\"workingHours\":[],\"closedDays\":[\"TUESDAY\"]}").statusCode()).isEqualTo(204);
         assertThat(json.readTree(get(owner, employeeTuesday).body()).get("workingHours").size()).isZero();
         assertThat(get(other, path).statusCode()).isEqualTo(404);
         assertThat(mutate(other, "PUT", path, special).statusCode()).isEqualTo(404);
@@ -466,6 +466,141 @@ class IdentityBrandIntegrationTests {
         assertThat(mutate(owner, "PUT", branchBase + today.minusDays(1), special).statusCode()).isEqualTo(400);
         assertThat(mutate(owner, "DELETE", branchBase + today.minusDays(1), "").statusCode()).isEqualTo(400);
         assertThat(mutate(owner, "PUT", branchBase + today, "{\"workingHours\":[]}").statusCode()).isEqualTo(204);
+    }
+
+    @Test
+    void availableSlotsEndpointChecksOwnershipAssignmentAndBranchClosure() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        createVerifiedBrand("slots-" + suffix + "@example.com", "Slots");
+        createVerifiedBrand("slots-other-" + suffix + "@example.com", "Other");
+        var owner = loginBrand("slots-" + suffix + "@example.com");
+        var other = loginBrand("slots-other-" + suffix + "@example.com");
+        String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
+                "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
+        assertThat(post(owner, "/api/panel/addService", "{\"displayName\":\"Kesim\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
+        assertThat(post(other, "/api/panel/addService", "{\"displayName\":\"Other\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
+        String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        String foreignServiceId = json.readTree(get(other, "/api/panel/services").body()).get(0).get("id").asText();
+        var date = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        String base = "/api/panel/appointment/available-slot/";
+        String path = base + serviceId + "/" + employeeId + "/" + date;
+        assertThat(get(owner, path).statusCode()).isEqualTo(400); // Not assigned yet.
+        assertThat(post(owner, "/api/panel/employee/assign",
+                "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
+        var response = get(owner, path);
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = json.readTree(response.body()).get("availableAppointmentSlotDetails");
+        assertThat(body.get("employeeId").asText()).isEqualTo(employeeId);
+        assertThat(body.get("serviceId").asText()).isEqualTo(serviceId);
+        assertThat(body.get("localTimes").size()).isEqualTo(11);
+        assertThat(body.get("localTimes").get(0).asText()).startsWith("08:00");
+        assertThat(get(other, path).statusCode()).isEqualTo(404);
+        assertThat(get(owner, base + foreignServiceId + "/" + employeeId + "/" + date).statusCode()).isEqualTo(404);
+        assertThat(get(session(), path).statusCode()).isEqualTo(401);
+        assertThat(patch(owner, "/api/panel/employee/" + employeeId + "/status", "{\"active\":false}").statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, path).body()).get("availableAppointmentSlotDetails").get("localTimes").size()).isZero();
+        assertThat(patch(owner, "/api/panel/employee/" + employeeId + "/status", "{\"active\":true}").statusCode()).isEqualTo(204);
+        assertThat(mutate(owner, "PUT", "/api/panel/branches/" + branchId + "/schedule/" + date, "{\"workingHours\":[]}").statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, path).body()).get("availableAppointmentSlotDetails").get("localTimes").size()).isZero();
+    }
+
+    @Test
+    void missingEmployeeWeekdaysInheritBranchAndExplicitClosuresStayClosed() throws Exception {
+        String email = "day-fallback-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(email, "Fallback");
+        var owner = loginBrand(email);
+        String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        String branchHoursPath = "/api/panel/branches/" + branchId + "/working-hours";
+        String week = "{\"workingHours\":[" + java.util.Arrays.stream(java.time.DayOfWeek.values())
+                .map(day -> "{\"dayOfWeek\":\"" + day + "\",\"startTime\":\"08:00\",\"endTime\":\"20:00\"}")
+                .collect(java.util.stream.Collectors.joining(",")) + "]}";
+        assertThat(mutate(owner, "PUT", branchHoursPath, week).statusCode()).isEqualTo(204);
+        String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
+                "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
+        String base = "/api/panel/employee/" + employeeId;
+        var monday = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        String request = """
+            {"workingHours":[{"dayOfWeek":"MONDAY","startTime":"10:00","endTime":"12:00"}],
+             "closedDays":["WEDNESDAY"]}
+            """;
+        assertThat(mutate(owner, "PUT", base + "/working-hours", request).statusCode()).isEqualTo(204);
+        var weeklyResult = json.readTree(get(owner, base + "/working-hours").body());
+        assertThat(weeklyResult.get("workingHours").size()).isEqualTo(6);
+        assertThat(weeklyResult.get("configuredHours").size()).isEqualTo(1);
+        assertThat(weeklyResult.get("inheritedDays").toString()).contains("TUESDAY").doesNotContain("MONDAY", "WEDNESDAY");
+        assertThat(weeklyResult.get("closedDays").get(0).asText()).isEqualTo("WEDNESDAY");
+        String mondayPath = base + "/schedule/" + monday;
+        String tuesdayPath = base + "/schedule/" + monday.plusDays(1);
+        String wednesdayPath = base + "/schedule/" + monday.plusDays(2);
+        assertThat(json.readTree(get(owner, mondayPath).body()).get("workingHours").get(0).get("startTime").asText()).startsWith("10:00");
+        assertThat(json.readTree(get(owner, tuesdayPath).body()).get("source").asText()).isEqualTo("BRANCH");
+        assertThat(json.readTree(get(owner, wednesdayPath).body()).get("workingHours").size()).isZero();
+        String dateHours = "{\"workingHours\":[{\"startTime\":\"14:00\",\"endTime\":\"16:00\"}]}";
+        // The omitted weekday uses the branch's date override, not merely its weekly hours.
+        String branchTuesday = "/api/panel/branches/" + branchId + "/schedule/" + monday.plusDays(1);
+        assertThat(mutate(owner, "PUT", branchTuesday, dateHours).statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, tuesdayPath).body()).get("workingHours").get(0).get("startTime").asText()).startsWith("14:00");
+        assertThat(mutate(owner, "PUT", tuesdayPath, "{\"workingHours\":[]}").statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, tuesdayPath).body()).get("workingHours").size()).isZero();
+        assertThat(mutate(owner, "DELETE", tuesdayPath, "").statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, tuesdayPath).body()).get("source").asText()).isEqualTo("BRANCH");
+        // A specific-date setting overrides even an explicitly closed weekly day.
+        assertThat(mutate(owner, "PUT", wednesdayPath, dateHours).statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, wednesdayPath).body()).get("workingHours").size()).isEqualTo(1);
+        assertThat(mutate(owner, "DELETE", wednesdayPath, "").statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, wednesdayPath).body()).get("workingHours").size()).isZero();
+        assertThat(mutate(owner, "PUT", base + "/working-hours", request.replace("WEDNESDAY", "MONDAY")).statusCode()).isEqualTo(400);
+        assertThat(mutate(owner, "PUT", base + "/working-hours", "{\"workingHours\":[],\"closedDays\":[null]}").statusCode()).isEqualTo(400);
+        // Empty employee customization means inheritance, unlike an empty specific-date override.
+        assertThat(mutate(owner, "PUT", base + "/working-hours", "{\"workingHours\":[],\"closedDays\":[]}").statusCode()).isEqualTo(204);
+        assertThat(json.readTree(get(owner, base + "/working-hours").body()).get("usesBranchHours").asBoolean()).isTrue();
+        assertThat(json.readTree(get(owner, wednesdayPath).body()).get("workingHours").size()).isEqualTo(1);
+    }
+
+    @Autowired com.appointmentplatform.appointment.persistence.AppointmentRepository appointments;
+
+    @Test
+    void appointmentCreationPersistsDatesSourceAndEnforcesBranchAndHours() throws Exception {
+        String email = "booking-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(email, "Booking Brand");
+        var owner = loginBrand(email);
+        var customer = session();
+        String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        String otherBranchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
+                "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
+        assertThat(post(owner, "/api/panel/addService", "{\"displayName\":\"Kesim\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
+        String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        assertThat(post(owner, "/api/panel/employee/assign",
+                "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
+        var date = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        String body = """
+                {"employeeId":"%s","serviceId":"%s","date":"%s","startTime":"10:00",
+                 "customerFirstName":"Ada","customerLastName":"Lovelace","customerPhone":"+905551112233"}
+                """.formatted(employeeId, serviceId, date);
+        String publicPath = "/api/public/appointment/create/" + branchId;
+        var created = post(customer, publicPath, body);
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+        var result = json.readTree(created.body());
+        var saved = appointments.findById(UUID.fromString(result.get("id").asText())).orElseThrow();
+        assertThat(saved.getSource()).isEqualTo(com.appointmentplatform.appointment.AppointmentSource.CUSTOMER);
+        assertThat(saved.getCustomerEmail()).isNull();
+        assertThat(saved.getStartsAt()).isEqualTo(date.atTime(10, 0).atZone(java.time.ZoneId.of("Europe/Istanbul")).toInstant());
+        assertThat(saved.getEndsAt()).isEqualTo(saved.getStartsAt().plusSeconds(3600));
+        assertThat(saved.getStatus()).isEqualTo(com.appointmentplatform.appointment.AppointmentStatus.PENDING);
+        assertThat(post(customer, "/api/public/appointment/create/" + otherBranchId, body).statusCode()).isEqualTo(400);
+        assertThat(post(customer, publicPath, body.replace("10:00", "11:30")).statusCode()).isEqualTo(400);
+        assertThat(post(customer, "/api/panel/appointment/create", body).statusCode()).isEqualTo(401);
+        String pastBody = body.replace(date.toString(), date.minusWeeks(4).toString());
+        assertThat(post(customer, publicPath, pastBody).statusCode()).isEqualTo(400);
+        var brandCreated = post(owner, "/api/panel/appointment/create", pastBody);
+        assertThat(brandCreated.statusCode()).as(brandCreated.body()).isEqualTo(201);
+        var brandSaved = appointments.findById(UUID.fromString(json.readTree(brandCreated.body()).get("id").asText())).orElseThrow();
+        assertThat(brandSaved.getSource()).isEqualTo(com.appointmentplatform.appointment.AppointmentSource.BRAND);
     }
 
     private String branchPayload() {

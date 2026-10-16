@@ -8,5 +8,7 @@ public interface BranchOperations {
 
     BranchDailySchedule dailyHours(UUID branchId, UUID brandId, java.time.LocalDate date);
 
+    UUID brandId(UUID branchId);
+
     void requireOwnedBy(UUID branchId, UUID brandId);
 }

@@ -26,7 +26,7 @@
     },
     {
       "key": "brandEmail",
-      "value": "brand@example.com",
+      "value": "doktor@mailpit.com",
       "type": "string"
     },
     {
@@ -81,6 +81,16 @@
     },
     {
       "key": "scheduleDate",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "appointmentStartTime",
+      "value": "10:00",
+      "type": "string"
+    },
+    {
+      "key": "appointmentId",
       "value": "",
       "type": "string"
     }
@@ -1244,7 +1254,7 @@
           "item": [
             {
               "name": "Weekly Schedule",
-              "description": "Get reads the configured week. Set replaces the entire week. Reset removes only employee weekly customization; the employee is not deleted. Date overrides remain.",
+              "description": "Employee day overrides: workingHours overrides named weekdays; closedDays explicitly closes days; all other days inherit the branch. PUT replaces the set of overrides. Date overrides take priority.",
               "item": [
                 {
                   "name": "Get Weekly Hours",
@@ -1252,7 +1262,7 @@
                     "method": "GET",
                     "url": "{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours",
                     "header": [],
-                    "description": "usesBranchHours=true means inherited. Otherwise workingHours is the configured employee week; omitted days are closed."
+                    "description": "workingHours combines custom and inherited weekly intervals within branch limits. configuredHours contains employee-only intervals; closedDays names explicit closures; inheritedDays names days using branch hours. usesBranchHours=true only if every day inherits. Date overrides are resolved by Get Effective Hours for Date."
                   },
                   "event": [
                     {
@@ -1291,10 +1301,10 @@
                         "value": "application/json"
                       }
                     ],
-                    "description": "Replaces the entire employee week. Edit to fit the branch schedule. Empty workingHours closes all days; it does not restore inheritance.",
+                    "description": "Replaces all weekly customizations: Monday uses 10:00–12:00, Wednesday is closed, every other day inherits the branch. Edit to fit your branch. Empty workingHours and closedDays reset all days to inheritance. Do not reuse GET workingHours as PUT input; use configuredHours and closedDays.",
                     "body": {
                       "mode": "raw",
-                      "raw": "{\n  \"workingHours\": [\n    {\n      \"dayOfWeek\": \"MONDAY\",\n      \"startTime\": \"09:00\",\n      \"endTime\": \"12:00\"\n    }\n  ]\n}",
+                      "raw": "{\n  \"workingHours\": [\n    {\n      \"dayOfWeek\": \"MONDAY\",\n      \"startTime\": \"10:00\",\n      \"endTime\": \"12:00\"\n    }\n  ],\n  \"closedDays\": [\n    \"WEDNESDAY\"\n  ]\n}",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -1505,7 +1515,7 @@
                         "value": "{{csrfToken}}"
                       }
                     ],
-                    "description": "Restores employee weekly hours or branch inheritance for this date. Today and future dates only."
+                    "description": "Removes this date override. Falls back to the employee weekday customization (including closure), or branch date hours if that weekday has no customization."
                   },
                   "event": [
                     {
@@ -1531,6 +1541,143 @@
                   "response": []
                 }
               ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "description": "Appointment creation and availability preview. Customer creation is work in progress: OTP, subscription gating and overlap prevention are not implemented yet. source is selected by the backend, never by the request.",
+      "item": [
+        {
+          "name": "Availability",
+          "item": [
+            {
+              "name": "Get Available Slots",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/available-slot/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
+                "description": "Set employeeId, assigned serviceId and scheduleDate (YYYY-MM-DD). Missing employee weekday settings inherit the branch date hours. closedDays explicitly closes weekly days; an empty employee date override closes that date. Branch closure and inactive employees always yield no times. Starts are at least one hour ahead in Europe/Istanbul. No request body; existing appointments are not subtracted yet."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "for (const key of ['employeeId', 'serviceId']) { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get(key) || '')) throw new Error('Set ' + key + ' to an existing UUID. Check environment overrides.'); }",
+                      "if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(pm.variables.get('scheduleDate') || '')) throw new Error('Set scheduleDate in YYYY-MM-DD format.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "if (pm.response.code === 200) {",
+                      "  const result = pm.response.json().availableAppointmentSlotDetails;",
+                      "  pm.test('Requested IDs match', () => { pm.expect(result.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(result.serviceId).to.eql(pm.variables.get('serviceId')); });",
+                      "  pm.test('Slots are ordered time strings', () => { pm.expect(result.localTimes).to.be.an('array'); result.localTimes.forEach(t => pm.expect(t).to.match(/^\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$/)); pm.expect(result.localTimes).to.eql([...result.localTimes].sort()); });",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Brand Creation",
+          "item": [
+            {
+              "name": "Create Appointment as Brand",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/create",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"{{scheduleDate}}\",\n  \"startTime\": \"{{appointmentStartTime}}\",\n  \"customerFirstName\": \"Ada\",\n  \"customerLastName\": \"Lovelace\",\n  \"customerPhone\": \"+905551112233\",\n  \"customerEmail\": \"ada@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Created', () => pm.response.to.have.status(201));",
+                      "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Customer Creation",
+          "item": [
+            {
+              "name": "Create Appointment as Customer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/create/{{branchId}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"{{scheduleDate}}\",\n  \"startTime\": \"{{appointmentStartTime}}\",\n  \"customerFirstName\": \"Ada\",\n  \"customerLastName\": \"Lovelace\",\n  \"customerPhone\": \"+905551112233\",\n  \"customerEmail\": \"ada@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. OTP is not implemented yet. Omit customerEmail to test optional email."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Created', () => pm.response.to.have.status(201));",
+                      "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }"
+                    ]
+                  }
+                }
+              ],
+              "response": []
             }
           ]
         }

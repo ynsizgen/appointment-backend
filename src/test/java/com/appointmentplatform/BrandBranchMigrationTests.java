@@ -26,6 +26,8 @@ class BrandBranchMigrationTests {
                     .schemas("appointment").load();
             current.migrate();
             current.validate();
+            assertThat(sql(database, "SELECT string_agg(column_name || ':' || data_type || ':' || is_nullable, ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema='appointment' AND table_name='appointments' AND column_name IN ('starts_at','ends_at','status','source');"))
+                    .isEqualTo("ends_at:timestamp with time zone:NO,source:character varying:NO,starts_at:timestamp with time zone:NO,status:character varying:NO");
             assertThat(sql(database, "SELECT count(*) FROM appointment.brands;")).isEqualTo("2");
             assertThat(sql(database, "SELECT count(*) FROM appointment.branches;")).isEqualTo("2");
             assertThat(sql(database, """
@@ -43,6 +45,36 @@ class BrandBranchMigrationTests {
             // Branch ownership is one-to-many; adding branches will not require a schema redesign.
             sql(database, "INSERT INTO appointment.branches(id, brand_id, name, address) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', 'Second', 'New address');");
             assertThat(sql(database, "SELECT count(*) FROM appointment.branches WHERE brand_id='00000000-0000-0000-0000-000000000001';")).isEqualTo("2");
+        }
+    }
+
+    @Test
+    void emptyLegacyEmployeeSchedulesStayClosedButPartialSchedulesInheritMissingDays() throws Exception {
+        try (var database = new PostgreSQLContainer("postgres:17")) {
+            database.start();
+            Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+                    .schemas("appointment").target("12").load().migrate();
+            sql(database, """
+                INSERT INTO appointment.brands(id, display_name) VALUES ('00000000-0000-0000-0000-000000000001', 'Brand');
+                INSERT INTO appointment.branches(id,brand_id,name,address) VALUES
+                ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Branch','Address');
+                INSERT INTO appointment.employees(id,branch_id,first_name,last_name,active) VALUES
+                ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','Closed','Employee',true),
+                ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','Partial','Employee',true);
+                INSERT INTO appointment.employee_weekly_schedules(employee_id) VALUES
+                ('00000000-0000-0000-0000-000000000003'),('00000000-0000-0000-0000-000000000004');
+                INSERT INTO appointment.employee_weekly_hours(employee_id,day_of_week,start_time,end_time) VALUES
+                ('00000000-0000-0000-0000-000000000004','MONDAY','10:00','12:00');
+                """);
+            var current = Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+                    .schemas("appointment").load();
+            current.migrate();
+            current.validate();
+            assertThat(sql(database, "SELECT count(*) FROM appointment.employee_weekly_closed_days WHERE employee_id='00000000-0000-0000-0000-000000000003'"))
+                    .isEqualTo("7");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.employee_weekly_closed_days WHERE employee_id='00000000-0000-0000-0000-000000000004'"))
+                    .isEqualTo("0");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.employee_weekly_hours")).isEqualTo("1");
         }
     }
 

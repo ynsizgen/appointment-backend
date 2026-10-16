@@ -43,7 +43,6 @@ public class ServiceService implements ServiceOperations {
     }
 
     @Override
-    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
     public void requireOwnedBy(UUID serviceId, UUID brandId) {
         if (!servicesRepository.existsByIdAndBrandId(serviceId, brandId)) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Service bulunamadı.");
