@@ -29,7 +29,7 @@ One BRAND account owns one Brand through a unique `users.brand_id`. ADMIN accoun
 | User.subscriptionActive | false | Admin, based on payment | Subscription entitlement, independent of panel login |
 | Branch.acceptingAppointments | false | Brand owner | Preference to accept new appointments |
 
-Future booking screens and new appointment creation require `subscriptionActive && acceptingAppointments`. Initial appointment creation APIs exist, but this entitlement check is not yet enforced in creation. Deactivating a subscription does not block panel access or existing-booking management. Payment-provider integration is future work.
+Future booking screens and new appointment creation require `subscriptionActive && acceptingAppointments`. Initial appointment creation APIs exist, and creation enforces this entitlement check. Deactivating a subscription does not block panel access or existing-booking management. Payment-provider integration is future work.
 
 ## APIs
 
@@ -97,7 +97,7 @@ Run `./mvnw verify` with Docker running. Testcontainers uses isolated PostgreSQL
 
 ## Future work
 
-Branch creation UI, booking conflict prevention, booking lifecycle, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
+Branch creation UI, booking lifecycle, public booking screens, SMS and payment-provider integration. Branch creation/weekly-hours APIs, service creation/listing and employee management/assignments are implemented.
 
 ## Employee working hours
 
@@ -116,13 +116,13 @@ No custom weekly record means branch inheritance. Weekly overrides are per weekd
 
 All employee schedule mutations lock the employee row to serialize concurrent updates. Date overrides are unique by employee/date. Effective daily hours always intersect with current branch hours, so later branch changes cannot expose closed time; inactive employees return no effective hours. The weekly endpoint returns combined `workingHours`, employee-only `configuredHours`, `closedDays` and `inheritedDays`. `usesBranchHours` means all seven days inherit; false can mean partial inheritance. Use configuredHours/closedDays when editing, not the combined intervals. These are working hours, not booking availability. V13 preserves legacy empty schedules as seven explicit closedDays; omitted weekdays of non-empty legacy schedules now inherit branch hours. Branches without configured hours are closed.
 
-These are schedule APIs, not booking APIs. Available start-time preview exists; subtracting existing appointments and preventing conflicts remain future work. No appointments are cancelled by schedule changes.
+These are schedule APIs, not booking APIs. Available start-time preview exists; existing PENDING/APPROVED appointments are subtracted and overlapping creation is rejected. No appointments are cancelled by schedule changes.
 
 ## Branch date overrides
 
 `GET /api/panel/branches/{branchId}/schedule/{date}` returns `{date, dateOverride, workingHours}`. `PUT` replaces that date with `{workingHours: [{startTime, endTime}]}`; an empty list explicitly closes it. `DELETE` removes the override and restores the owner-defined weekly schedule. Dates use `YYYY-MM-DD`; edits are limited to today/future dates in Europe/Istanbul. Multiple intervals are allowed without overlap, and a date override can open a normally closed weekday. Writes lock the branch row and persist the header/intervals atomically; employee/date and branch/date overrides are independent.
 
-Employee daily resolution and date validation now use effective branch date hours. Employees inheriting branch hours follow the override directly; employee custom weekly/date hours are intersected with it. Closing a branch yields no employee hours, even with employee date overrides. Restoring branch weekly hours preserves employee customizations. Appointment conflict prevention will be added with booking; these APIs currently manage schedules only.
+Employee daily resolution and date validation now use effective branch date hours. Employees inheriting branch hours follow the override directly; employee custom weekly/date hours are intersected with it. Closing a branch yields no employee hours, even with employee date overrides. Restoring branch weekly hours preserves employee customizations. Appointment creation now rejects conflicts; schedule changes still do not cancel existing bookings.
 
 ## Available slot preview
 
@@ -141,4 +141,23 @@ Tests include fixed-clock lead-time boundaries, midnight rollover, split working
 - Istanbul local date/time is converted to `Instant`; PostgreSQL stores `timestamptz`. Status is initially PENDING; service name and duration are snapshots.
 - V14 creates appointments, V15 adds source, V16 aligns types and makes source mandatory. V16 stops if legacy time-only rows exist: their appointment dates must be recovered, not guessed. Applied migrations must not be edited.
 - Appointment accesses employee/branch/service through module-root interfaces. Shared schedule reads and relationship checks do not require a BRAND session; panel entry methods retain authorization.
-- Remaining work: OTP verification, subscription/acceptance gating, overlap prevention including database concurrency protection, lifecycle actions, notifications and occupied-time subtraction. Passing current tests does not mean these features exist.
+- Remaining work: lifecycle actions, notifications. Passing current tests does not mean these features exist.
+
+### Appointment overlap protection — 16 October 2026
+
+Creation checks existing PENDING/APPROVED bookings and returns 409 for overlaps. V17 adds PostgreSQL `btree_gist` and the `ex_appointments_employee_time` exclusion constraint as the concurrency guarantee. It applies to the same employee across all services, using [start, end) intervals; adjacent bookings remain valid. A database collision also returns 409 with an appointment-specific message. Existing conflicting data causes migration failure and is never deleted automatically. Migration is applied on backend restart; the database migration account needs permission to install btree_gist.
+
+### New-booking permission — 16 October 2026
+
+Both BRAND and CUSTOMER creation require the brand account's active subscription and the selected branch's `acceptingAppointments=true`. The shared create path enforces both checks through `SubscriptionOperations` (identity) and `BranchOperations`. Inactive subscription or closed acceptance returns an explanatory 409. This does not revoke panel access or modify existing appointments; `enabled` remains the separate account-access setting. No database migration is needed.
+
+## Customer phone verification — 16 October 2026
+
+1. Obtain CSRF and keep the matching cookie.
+2. `POST /api/public/phone-verifications/request` with `{"phone":"+905551112233"}` returns 204. Dev logs a six-digit code (only the last four phone digits are shown).
+3. `POST /api/public/phone-verifications/verify` with phone and code returns `verificationToken` and `expiresAt`.
+4. Send that token in `X-Phone-Verification` on customer appointment creation. The request phone must match. The proof lasts five minutes and is consumed atomically with successful booking; a rejected booking rolls consumption back. Brand creation does not require this header.
+
+Codes expire after two minutes, allow three wrong guesses, require 60 seconds between sends and allow at most three sends per rolling hour per phone. Resend invalidates previous verification. IP limits add 20 send requests / 15 minutes and 60 verify requests / 15 minutes. Failed guesses commit their counters. Per-phone database locks protect concurrent requests and single-use consumption. Codes and phone lookup keys use HMAC-SHA256 with the configured secret; proof tokens are high-entropy and stored only as hashes. V18 creates verification/rate-history tables. Codes are not returned in HTTP responses and are not automatically retried.
+
+`SmsSender` is the notification module contract. `DevSmsSender` exists only under `dev` without `prod`. Other profiles use `UnavailableSmsSender`, returning 503 without logging codes. A real provider adapter is still required for production. Integration tests use a mock sender; they never send real SMS.

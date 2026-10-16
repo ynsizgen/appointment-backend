@@ -9,6 +9,8 @@ import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.identity.SubscriptionOperations;
+import com.appointmentplatform.identity.PhoneVerifications;
 import com.appointmentplatform.employee.EmployeeDailyScheduleDetails;
 import com.appointmentplatform.employee.EmployeeOperations;
 import com.appointmentplatform.employee.EmployeeScheduleOperations;
@@ -35,14 +37,19 @@ public class ApplicationService {
     private final Clock clock;
     private final AppointmentRepository appointmentRepository;
     private final BranchOperations branchOperations;
+    private final SubscriptionOperations subscriptions;
+    private final PhoneVerifications phoneVerifications;
 
-    public ApplicationService(EmployeeScheduleOperations employeeScheduleOperations, EmployeeOperations employeeOperations, ServiceOperations serviceOperations, Clock clock, AppointmentRepository appointmentRepository, BranchOperations branchOperations) {
+    public ApplicationService(EmployeeScheduleOperations employeeScheduleOperations, EmployeeOperations employeeOperations, ServiceOperations serviceOperations, Clock clock, AppointmentRepository appointmentRepository, BranchOperations branchOperations,
+                              SubscriptionOperations subscriptions, PhoneVerifications phoneVerifications) {
         this.employeeScheduleOperations = employeeScheduleOperations;
         this.employeeOperations = employeeOperations;
         this.serviceOperations = serviceOperations;
         this.clock = clock;
         this.appointmentRepository = appointmentRepository;
         this.branchOperations = branchOperations;
+        this.subscriptions = subscriptions;
+        this.phoneVerifications = phoneVerifications;
     }
 
 
@@ -133,8 +140,8 @@ public class ApplicationService {
     }
 
     @Transactional
-    public AppointmentDetails createByCustomer(UUID branchId, @Valid AppointmentCreateRequest request) {
-        // TODO  SMS doğrulaması
+    public AppointmentDetails createByCustomer(UUID branchId, @Valid AppointmentCreateRequest request, String verificationToken) {
+        phoneVerifications.consume(request.customerPhone(), verificationToken);
 
         return create(branchOperations.brandId(branchId), branchId, request, AppointmentSource.CUSTOMER);
     }
@@ -145,6 +152,9 @@ public class ApplicationService {
         if (!employeeOperations.branchId(request.employeeId()).equals(branchId)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Çalışan seçilen şubeye ait değil.");
         }
+
+        subscriptions.requireActiveSubscription(brandId);
+        branchOperations.requireAcceptingAppointments(branchId, brandId);
 
         employeeOperations.requireServiceAssigned(brandId, request.employeeId(), request.serviceId());
         serviceOperations.requireOwnedBy(request.serviceId(), brandId);
@@ -184,6 +194,19 @@ public class ApplicationService {
         ZoneId zone = ZoneId.of("Europe/Istanbul");
         Instant startAt = start.atZone(zone).toInstant();
         Instant endAt = end.atZone(zone).toInstant();
+
+        boolean overlaps = appointmentRepository.existsOverlapping(
+                request.employeeId(),
+                startAt,
+                endAt,
+                List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED));
+
+        if (overlaps) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Çalışanın bu saat aralığında başka bir randevusu var.");
+        }
+
 
         Appointment appointment = appointmentRepository.saveAndFlush(new Appointment(UUID.randomUUID(), branchId,  request.employeeId(), request.serviceId(),
                 service.displayName(), service.durationMinutes(), request.customerFirstName(), request.customerLastName().strip(), request.customerPhone().strip(),

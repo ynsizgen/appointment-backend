@@ -98,6 +98,19 @@ public class BranchService implements BranchOperations {
     }
 
     @Override
+    public void requireAcceptingAppointments(UUID branchId, UUID brandId) {
+        var branch = repository.findById(branchId)
+                .filter(value -> value.brandId().equals(brandId))
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı."));
+
+        if (!branch.acceptingAppointments()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Bu şube şu anda yeni randevu kabul etmiyor.");
+        }
+    }
+
+    @Override
     public UUID brandId(UUID branchId) {
         return repository.findById(branchId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Şube bulunamadı."))

@@ -23,8 +23,8 @@ class AppointmentPlatformApplicationTests {
 
     @Test
     void migrationsRunAgainstRealPostgres() {
-        assertThat(flyway.info().applied()).hasSize(16);
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("16");
+        assertThat(flyway.info().applied()).hasSize(18);
+        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("18");
         flyway.validate();
     }
 
@@ -51,6 +51,17 @@ class AppointmentPlatformApplicationTests {
                 .POST(HttpRequest.BodyPublishers.ofString("{}"))
                 .header("Content-Type", "application/json").build();
         assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+    }
+
+    @Test
+    void otpEndpointsRequireCsrfEvenWithoutLogin() throws Exception {
+        for (String path : new String[]{"/api/public/phone-verifications/request", "/api/public/phone-verifications/verify"}) {
+            var request = HttpRequest.newBuilder(uri(path))
+                    .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                    .header("Content-Type", "application/json")
+                    .build();
+            assertThat(client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+        }
     }
 
     private HttpResponse<String> get(String path) throws Exception {

@@ -27,4 +27,18 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
             @Param("rangeStart") Instant rangeStart,
             @Param("rangeEnd") Instant rangeEnd,
             @Param("statuses") List<AppointmentStatus> statuses);
+
+    @Query("""
+    SELECT COUNT(a) > 0
+    FROM Appointment a
+    WHERE a.employeeId = :employeeId
+      AND a.status IN :statuses
+      AND a.startsAt < :endsAt
+      AND a.endsAt > :startsAt
+    """)
+    boolean existsOverlapping(
+            @Param("employeeId") UUID employeeId,
+            @Param("startsAt") Instant startsAt,
+            @Param("endsAt") Instant endsAt,
+            @Param("statuses") List<AppointmentStatus> statuses);
 }

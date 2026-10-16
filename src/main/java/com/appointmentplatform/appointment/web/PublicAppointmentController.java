@@ -23,9 +23,10 @@ public class PublicAppointmentController {
     @ResponseStatus(HttpStatus.CREATED)
     public AppointmentCreationResponse createByCustomer(
             @PathVariable UUID branchId,
-            @RequestBody @Valid AppointmentCreateRequest request) {
+            @RequestBody @Valid AppointmentCreateRequest request,
+            @RequestHeader(value = "X-Phone-Verification", required = false) String verificationToken) {
 
         return AppointmentCreationResponse.from(
-                applicationService.createByCustomer(branchId, request));
+                applicationService.createByCustomer(branchId, request, verificationToken));
     }
 }

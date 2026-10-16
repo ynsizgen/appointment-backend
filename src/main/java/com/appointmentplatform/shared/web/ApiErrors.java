@@ -3,6 +3,7 @@ package com.appointmentplatform.shared.web;
 import com.appointmentplatform.shared.ApiException;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -17,7 +18,7 @@ public class ApiErrors {
         problem.setTitle(title(exception.status()));
         var builder = ResponseEntity.status(exception.status());
         if (exception.status() == HttpStatus.TOO_MANY_REQUESTS) {
-            builder.header("Retry-After", "900");
+            builder.header("Retry-After", Long.toString(exception.retryAfterSeconds()));
         }
         return builder.body(problem);
     }
@@ -46,8 +47,17 @@ public class ApiErrors {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ProblemDetail> conflict(DataIntegrityViolationException exception) {
-        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
-                "İşlem mevcut kayıtlarla çakışıyor.");
+        String detail = "İşlem mevcut kayıtlarla çakışıyor.";
+
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation
+                    && "ex_appointments_employee_time".equals(violation.getConstraintName())) {
+                detail = "Çalışanın bu saat aralığında başka bir randevusu var.";
+                break;
+            }
+        }
+
+        var problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
         problem.setTitle("Kayıt çakışması");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
     }

@@ -93,6 +93,21 @@
       "key": "appointmentId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "customerPhone",
+      "value": "+905551112233",
+      "type": "string"
+    },
+    {
+      "key": "smsCode",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "phoneVerificationToken",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -1548,7 +1563,7 @@
     },
     {
       "name": "Appointments",
-      "description": "Appointment creation and availability preview. Customer creation is work in progress: OTP, subscription gating and overlap prevention are not implemented yet. source is selected by the backend, never by the request.",
+      "description": "Appointment creation and availability. PENDING/APPROVED appointments block time. Overlapping creation returns 409; V17 protects concurrent writes. Both creation endpoints require active subscription and branch acceptance. Otherwise 409 explains the reason. Customer creation requires a single-use phone verification token. Dev profile logs SMS codes; production provider is not configured.",
       "item": [
         {
           "name": "Availability",
@@ -1559,7 +1574,7 @@
                 "method": "GET",
                 "header": [],
                 "url": "{{baseUrl}}/api/panel/appointment/available-slot/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
-                "description": "Set employeeId, assigned serviceId and scheduleDate (YYYY-MM-DD). Missing employee weekday settings inherit the branch date hours. closedDays explicitly closes weekly days; an empty employee date override closes that date. Branch closure and inactive employees always yield no times. Starts are at least one hour ahead in Europe/Istanbul. No request body; existing appointments are not subtracted yet."
+                "description": "Set employeeId, assigned serviceId and scheduleDate (YYYY-MM-DD). Missing employee weekday settings inherit the branch date hours. closedDays explicitly closes weekly days; an empty employee date override closes that date. Branch closure and inactive employees always yield no times. Starts are at least one hour ahead in Europe/Istanbul. No request body; PENDING/APPROVED appointments are subtracted."
               },
               "event": [
                 {
@@ -1618,7 +1633,7 @@
                     }
                   }
                 },
-                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours."
+                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking."
               },
               "event": [
                 {
@@ -1633,14 +1648,9 @@
                 }
               ],
               "response": []
-            }
-          ]
-        },
-        {
-          "name": "Customer Creation",
-          "item": [
+            },
             {
-              "name": "Create Appointment as Customer",
+              "name": "Reject Duplicate Appointment",
               "request": {
                 "method": "POST",
                 "header": [
@@ -1653,7 +1663,7 @@
                     "value": "{{csrfToken}}"
                   }
                 ],
-                "url": "{{baseUrl}}/api/public/appointment/create/{{branchId}}",
+                "url": "{{baseUrl}}/api/panel/appointment/create",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"{{scheduleDate}}\",\n  \"startTime\": \"{{appointmentStartTime}}\",\n  \"customerFirstName\": \"Ada\",\n  \"customerLastName\": \"Lovelace\",\n  \"customerPhone\": \"+905551112233\",\n  \"customerEmail\": \"ada@example.com\"\n}",
@@ -1663,7 +1673,136 @@
                     }
                   }
                 },
-                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. OTP is not implemented yet. Omit customerEmail to test optional email."
+                "description": "First run Create Appointment as Brand successfully. Keep the same employee/date/startTime and submit again; expect 409. Requires V17 for concurrency protection. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Overlap rejected', () => pm.response.to.have.status(409));",
+                      "pm.test('Conflict explained', () => pm.expect(pm.response.json().detail).to.include('başka bir randevusu var')); "
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Customer Creation",
+          "item": [
+            {
+              "name": "01 Request SMS Code",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/phone-verifications/request",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"phone\": \"{{customerPhone}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Get CSRF first. Dev profile logs DEV SMS with the last four phone digits and code. Set smsCode from that log. Code TTL 2 minutes, resend wait 60 seconds, max 3 sends in a rolling hour per phone. Production without provider returns 503. No automatic SMS retry."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('SMS accepted', () => pm.response.to.have.status(204));",
+                      "if (pm.response.code === 204) { pm.collectionVariables.set('smsCode', ''); pm.collectionVariables.set('phoneVerificationToken', ''); }"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "02 Verify SMS Code",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/phone-verifications/verify",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"phone\": \"{{customerPhone}}\",\n  \"code\": \"{{smsCode}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Enter the six-digit code from the dev log. At most three wrong guesses; expired, exhausted or already verified codes are rejected. Response token is valid for five minutes and one booking."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Phone verified', () => pm.response.to.have.status(200));",
+                      "if (pm.response.code === 200) { const result = pm.response.json(); pm.collectionVariables.set('phoneVerificationToken', result.verificationToken); pm.test('Token expires', () => pm.expect(Date.parse(result.expiresAt)).to.be.above(Date.now())); }"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Create Appointment as Customer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  },
+                  {
+                    "key": "X-Phone-Verification",
+                    "value": "{{phoneVerificationToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/create/{{branchId}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"{{scheduleDate}}\",\n  \"startTime\": \"{{appointmentStartTime}}\",\n  \"customerFirstName\": \"Ada\",\n  \"customerLastName\": \"Lovelace\",\n  \"customerPhone\": \"{{customerPhone}}\",\n  \"customerEmail\": \"ada@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. Run Request SMS Code then Verify SMS Code first. Token is bound to customerPhone, expires after 5 minutes and is consumed only by a successful booking. Omit customerEmail to test optional email. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking."
               },
               "event": [
                 {
@@ -1672,7 +1811,8 @@
                     "type": "text/javascript",
                     "exec": [
                       "pm.test('Created', () => pm.response.to.have.status(201));",
-                      "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }"
+                      "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }",
+                      "if (pm.response.code === 201) pm.collectionVariables.set('phoneVerificationToken', '');"
                     ]
                   }
                 }

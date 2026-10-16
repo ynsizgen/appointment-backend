@@ -1,12 +1,14 @@
 package com.appointmentplatform;
 
-import com.appointmentplatform.identity.security.Totp;
+import com.appointmentplatform.appointment.AppointmentSource;
+import com.appointmentplatform.appointment.AppointmentStatus;
+import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.identity.domain.*;
 import com.appointmentplatform.identity.persistence.*;
+import com.appointmentplatform.identity.security.Totp;
 import com.appointmentplatform.notification.persistence.EmailJobRepository;
 import com.appointmentplatform.shared.Crypto;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.appointmentplatform.shared.internal.ratelimit.RateLimitRepository;
 import java.net.CookieManager;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -14,14 +16,29 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
+import com.appointmentplatform.notification.SmsSender;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.mockito.ArgumentCaptor;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Import(TestcontainersConfiguration.class)
@@ -45,11 +62,14 @@ class IdentityBrandIntegrationTests {
     Crypto crypto;
     @Autowired
     PasswordEncoder passwords;
-    @Autowired Totp totp;
-    @Autowired Clock clock;
-    @Autowired com.appointmentplatform.shared.internal.ratelimit.RateLimitRepository rateLimits;
+    @Autowired
+    Totp totp;
+    @Autowired
+    Clock clock;
+    @Autowired
+    RateLimitRepository rateLimits;
 
-    @org.junit.jupiter.api.BeforeEach
+    @BeforeEach
     void resetRateLimitsBetweenIndependentScenarios() {
         rateLimits.deleteAllInBatch();
     }
@@ -142,7 +162,7 @@ class IdentityBrandIntegrationTests {
         createVerifiedBrand(email, "Hours Brand");
         var owner = loginBrand(email);
         String path = "/api/panel/branches";
-        for (String invalid : java.util.List.of(
+        for (String invalid : List.of(
                 branchPayload().replace("08:00", "12:00"),
                 branchPayload().replace("MONDAY", "INVALID"),
                 branchPayload().replace("\"startTime\":\"08:00\"", "\"startTime\":null"),
@@ -194,9 +214,9 @@ class IdentityBrandIntegrationTests {
         assertThat(post(owner, addPath, "{\"displayName\":\"Saç Boyama\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
         var services = json.readTree(get(owner, listPath).body());
         assertThat(services.size()).isEqualTo(2);
-        assertThat(java.util.List.of(services.get(0).get("displayName").asText(), services.get(1).get("displayName").asText()))
+        assertThat(List.of(services.get(0).get("displayName").asText(), services.get(1).get("displayName").asText()))
                 .containsExactlyInAnyOrder("Saç Kesimi", "Saç Boyama");
-        assertThat(java.util.List.of(services.get(0).get("durationMinutes").asInt(), services.get(1).get("durationMinutes").asInt()))
+        assertThat(List.of(services.get(0).get("durationMinutes").asInt(), services.get(1).get("durationMinutes").asInt()))
                 .containsExactlyInAnyOrder(30, 60);
         String ownerBrandId = json.readTree(get(owner, "/api/panel/brand").body()).get("id").asText();
         assertThat(services.get(0).get("brandId").asText()).isEqualTo(ownerBrandId);
@@ -338,8 +358,8 @@ class IdentityBrandIntegrationTests {
         String employeeId = json.readTree(employeeResponse.body()).get("id").asText();
         String base = "/api/panel/employee/" + employeeId;
         String weeklyPath = base + "/working-hours";
-        var date = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
-                .with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
+                .with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
         String dailyPath = base + "/schedule/" + date;
         var inherited = json.readTree(get(owner, weeklyPath).body());
         assertThat(inherited.get("usesBranchHours").asBoolean()).isTrue();
@@ -387,14 +407,14 @@ class IdentityBrandIntegrationTests {
                 "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}");
         String base = "/api/panel/employee/" + json.readTree(employee.body()).get("id").asText();
         String weeklyPath = base + "/working-hours";
-        var today = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")));
+        var today = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")));
         String datePath = base + "/schedule/" + today;
-        for (String path : java.util.List.of(weeklyPath, datePath)) {
+        for (String path : List.of(weeklyPath, datePath)) {
             assertThat(get(other, path).statusCode()).isEqualTo(404);
             assertThat(mutate(other, "PUT", path, "{\"workingHours\":[]}").statusCode()).isEqualTo(404);
             assertThat(mutate(other, "DELETE", path, "").statusCode()).isEqualTo(404);
         }
-        for (String invalid : java.util.List.of("{}", "{\"workingHours\":[null]}",
+        for (String invalid : List.of("{}", "{\"workingHours\":[null]}",
                 "{\"workingHours\":[{\"dayOfWeek\":\"MONDAY\",\"startTime\":\"08:00\"}]}",
                 "{\"workingHours\":[{\"dayOfWeek\":\"MONDAY\",\"startTime\":\"11:00\",\"endTime\":\"14:00\"}]}",
                 "{\"workingHours\":[{\"dayOfWeek\":\"TUESDAY\",\"startTime\":\"09:00\",\"endTime\":\"10:00\"}]}",
@@ -421,8 +441,8 @@ class IdentityBrandIntegrationTests {
         String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
         String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
                 "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
-        var today = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")));
-        var monday = today.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        var today = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")));
+        var monday = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
         String branchBase = "/api/panel/branches/" + branchId + "/schedule/";
         String path = branchBase + monday;
         String employeeBase = "/api/panel/employee/" + employeeId;
@@ -458,7 +478,7 @@ class IdentityBrandIntegrationTests {
         assertThat(get(other, path).statusCode()).isEqualTo(404);
         assertThat(mutate(other, "PUT", path, special).statusCode()).isEqualTo(404);
         assertThat(mutate(other, "DELETE", path, "").statusCode()).isEqualTo(404);
-        for (String invalid : java.util.List.of("{}", "{\"workingHours\":[null]}",
+        for (String invalid : List.of("{}", "{\"workingHours\":[null]}",
                 special.replace("16:00", "11:00"), special.replace("10:00", "12:00"))) {
             assertThat(mutate(owner, "PUT", tuesdayPath, invalid).statusCode()).isEqualTo(400);
         }
@@ -482,8 +502,8 @@ class IdentityBrandIntegrationTests {
         assertThat(post(other, "/api/panel/addService", "{\"displayName\":\"Other\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
         String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
         String foreignServiceId = json.readTree(get(other, "/api/panel/services").body()).get(0).get("id").asText();
-        var date = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
-                .plusWeeks(1).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
         String base = "/api/panel/appointment/available-slot/";
         String path = base + serviceId + "/" + employeeId + "/" + date;
         assertThat(get(owner, path).statusCode()).isEqualTo(400); // Not assigned yet.
@@ -513,15 +533,15 @@ class IdentityBrandIntegrationTests {
         var owner = loginBrand(email);
         String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
         String branchHoursPath = "/api/panel/branches/" + branchId + "/working-hours";
-        String week = "{\"workingHours\":[" + java.util.Arrays.stream(java.time.DayOfWeek.values())
+        String week = "{\"workingHours\":[" + Arrays.stream(DayOfWeek.values())
                 .map(day -> "{\"dayOfWeek\":\"" + day + "\",\"startTime\":\"08:00\",\"endTime\":\"20:00\"}")
-                .collect(java.util.stream.Collectors.joining(",")) + "]}";
+                .collect(Collectors.joining(",")) + "]}";
         assertThat(mutate(owner, "PUT", branchHoursPath, week).statusCode()).isEqualTo(204);
         String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
                 "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
         String base = "/api/panel/employee/" + employeeId;
-        var monday = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
-                .plusWeeks(1).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        var monday = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
         String request = """
             {"workingHours":[{"dayOfWeek":"MONDAY","startTime":"10:00","endTime":"12:00"}],
              "closedDays":["WEDNESDAY"]}
@@ -560,7 +580,11 @@ class IdentityBrandIntegrationTests {
         assertThat(json.readTree(get(owner, wednesdayPath).body()).get("workingHours").size()).isEqualTo(1);
     }
 
-    @Autowired com.appointmentplatform.appointment.persistence.AppointmentRepository appointments;
+    @MockitoBean
+    SmsSender smsSender;
+
+    @Autowired
+    AppointmentRepository appointments;
 
     @Test
     void appointmentCreationPersistsDatesSourceAndEnforcesBranchAndHours() throws Exception {
@@ -576,44 +600,97 @@ class IdentityBrandIntegrationTests {
         String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
         assertThat(post(owner, "/api/panel/employee/assign",
                 "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
-        var date = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Europe/Istanbul")))
-                .plusWeeks(1).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
         String body = """
                 {"employeeId":"%s","serviceId":"%s","date":"%s","startTime":"10:00",
                  "customerFirstName":"Ada","customerLastName":"Lovelace","customerPhone":"+905551112233"}
                 """.formatted(employeeId, serviceId, date);
         String publicPath = "/api/public/appointment/create/" + branchId;
-        var created = post(customer, publicPath, body);
-        assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
-        var result = json.readTree(created.body());
-        var saved = appointments.findById(UUID.fromString(result.get("id").asText())).orElseThrow();
-        assertThat(saved.getSource()).isEqualTo(com.appointmentplatform.appointment.AppointmentSource.CUSTOMER);
-        assertThat(saved.getCustomerEmail()).isNull();
-        assertThat(saved.getStartsAt()).isEqualTo(date.atTime(10, 0).atZone(java.time.ZoneId.of("Europe/Istanbul")).toInstant());
-        assertThat(saved.getEndsAt()).isEqualTo(saved.getStartsAt().plusSeconds(3600));
-        assertThat(saved.getStatus()).isEqualTo(com.appointmentplatform.appointment.AppointmentStatus.PENDING);
-        // Real PostgreSQL query: excluded statuses must not block availability.
-        var pending = com.appointmentplatform.appointment.AppointmentStatus.PENDING;
-        var approved = com.appointmentplatform.appointment.AppointmentStatus.APPROVED;
-        var employeeUuid = UUID.fromString(employeeId);
-        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(approved))).isEmpty();
-        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(pending, approved)))
-                .extracting(a -> a.getId()).containsExactly(saved.getId());
-        saved.setStatus(approved);
-        appointments.saveAndFlush(saved);
-        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(pending))).isEmpty();
-        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), java.util.List.of(pending, approved)))
-                .extracting(a -> a.getId()).containsExactly(saved.getId());
+        assertThat(post(customer, publicPath, body).statusCode()).isEqualTo(403);
+        verifyPhone(customer, "+905551112233");
+        long countBefore = appointments.count();
+        for (var caller : List.of(customer, owner)) {
+            String path = caller == customer ? publicPath : "/api/panel/appointment/create";
+            var denied = post(caller, path, body);
+            assertThat(denied.statusCode()).as(denied.body()).isEqualTo(409);
+            assertThat(denied.body()).contains("aboneliği aktif");
+        }
+        assertThat(get(owner, "/api/panel/brand").statusCode()).isEqualTo(200);
+        var account = users.findByEmail(email).orElseThrow();
+        account.changeStatus(true, true, clock.instant());
+        users.saveAndFlush(account);
 
+        for (var caller : List.of(customer, owner)) {
+            String path = caller == customer ? publicPath : "/api/panel/appointment/create";
+            var denied = post(caller, path, body);
+            assertThat(denied.statusCode()).as(denied.body()).isEqualTo(409);
+            assertThat(denied.body()).contains("yeni randevu kabul etmiyor");
+        }
+        assertThat(appointments.count()).isEqualTo(countBefore);
+        assertThat(patch(owner, "/api/panel/branches/" + branchId + "/appointment-acceptance",
+                "{\"acceptingAppointments\":true}").statusCode()).isEqualTo(200);
         assertThat(post(customer, "/api/public/appointment/create/" + otherBranchId, body).statusCode()).isEqualTo(400);
         assertThat(post(customer, publicPath, body.replace("10:00", "11:30")).statusCode()).isEqualTo(400);
         assertThat(post(customer, "/api/panel/appointment/create", body).statusCode()).isEqualTo(401);
         String pastBody = body.replace(date.toString(), date.minusWeeks(4).toString());
         assertThat(post(customer, publicPath, pastBody).statusCode()).isEqualTo(400);
+        assertThat(post(customer, publicPath, body.replace("+905551112233", "+905551112234")).statusCode()).isEqualTo(403);
+        var created = post(customer, publicPath, body);
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+        assertThat(post(customer, publicPath, body.replace("10:00", "15:00")).statusCode()).isEqualTo(403);
+        var duplicate = post(owner, "/api/panel/appointment/create", body);
+        assertThat(duplicate.statusCode()).as(duplicate.body()).isEqualTo(409);
+        assertThat(duplicate.body()).contains("başka bir randevusu var");
+        var result = json.readTree(created.body());
+        var saved = appointments.findById(UUID.fromString(result.get("id").asText())).orElseThrow();
+        assertThat(saved.getSource()).isEqualTo(AppointmentSource.CUSTOMER);
+        assertThat(saved.getCustomerEmail()).isNull();
+        assertThat(saved.getStartsAt()).isEqualTo(date.atTime(10, 0).atZone(ZoneId.of("Europe/Istanbul")).toInstant());
+        assertThat(saved.getEndsAt()).isEqualTo(saved.getStartsAt().plusSeconds(3600));
+        assertThat(saved.getStatus()).isEqualTo(AppointmentStatus.PENDING);
+        // Real PostgreSQL query: excluded statuses must not block availability.
+        var pending = AppointmentStatus.PENDING;
+        var approved = AppointmentStatus.APPROVED;
+        var employeeUuid = UUID.fromString(employeeId);
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), List.of(approved))).isEmpty();
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), List.of(pending, approved)))
+                .extracting(a -> a.getId()).containsExactly(saved.getId());
+        saved.setStatus(approved);
+        appointments.saveAndFlush(saved);
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), List.of(pending))).isEmpty();
+        assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), List.of(pending, approved)))
+                .extracting(a -> a.getId()).containsExactly(saved.getId());
+
         var brandCreated = post(owner, "/api/panel/appointment/create", pastBody);
         assertThat(brandCreated.statusCode()).as(brandCreated.body()).isEqualTo(201);
         var brandSaved = appointments.findById(UUID.fromString(json.readTree(brandCreated.body()).get("id").asText())).orElseThrow();
-        assertThat(brandSaved.getSource()).isEqualTo(com.appointmentplatform.appointment.AppointmentSource.BRAND);
+        assertThat(brandSaved.getSource()).isEqualTo(AppointmentSource.BRAND);
+        verifyPhone(customer, "+905551112235");
+        // An open branch alone is insufficient; disabling subscription preserves old bookings and panel access.
+        account.changeStatus(true, false, clock.instant());
+        users.saveAndFlush(account);
+        for (var caller : List.of(customer, owner)) {
+            String path = caller == customer ? publicPath : "/api/panel/appointment/create";
+            var denied = post(caller, path, body.replace("10:00", "15:00").replace("+905551112233", "+905551112235"));
+            assertThat(denied.statusCode()).as(denied.body()).isEqualTo(409);
+            assertThat(denied.body()).contains("aboneliği aktif");
+        }
+        assertThat(get(owner, "/api/panel/brand").statusCode()).isEqualTo(200);
+        assertThat(appointments.findById(saved.getId())).isPresent();
+        assertThat(appointments.findById(brandSaved.getId())).isPresent();
+
+    }
+
+    private void verifyPhone(TestSession session, String phone) throws Exception {
+        var requested = post(session, "/api/public/phone-verifications/request", "{\"phone\":\"" + phone + "\"}");
+        assertThat(requested.statusCode()).as(requested.body()).isEqualTo(204);
+        var code = ArgumentCaptor.forClass(String.class);
+        verify(smsSender).sendVerificationCode(eq(phone), code.capture());
+        var verified = post(session, "/api/public/phone-verifications/verify",
+                "{\"phone\":\"" + phone + "\",\"code\":\"" + code.getValue() + "\"}");
+        assertThat(verified.statusCode()).as(verified.body()).isEqualTo(200);
+        session.phoneToken = json.readTree(verified.body()).get("verificationToken").asText();
     }
 
     private String branchPayload() {
@@ -659,7 +736,10 @@ class IdentityBrandIntegrationTests {
 
     private HttpResponse<String> mutate(TestSession session, String method, String path, String body) throws Exception {
         var request = HttpRequest.newBuilder(uri(path)).method(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-            .header("Content-Type", "application/json").header(session.csrfHeader, session.csrfToken).build();
+            .header("Content-Type", "application/json")
+            .header(session.csrfHeader, session.csrfToken)
+            .header("X-Phone-Verification", session.phoneToken)
+            .build();
         var response = session.client.send(request, HttpResponse.BodyHandlers.ofString());
         // Authentication rotates the CSRF token. Refresh it for later mutations.
         if (path.equals("/api/auth/login") && response.statusCode() == 200) {
@@ -671,14 +751,20 @@ class IdentityBrandIntegrationTests {
         return response;
     }
 
-    private URI uri(String path) { return URI.create("http://localhost:" + port + path); }
+    private URI uri(String path) {
+        return URI.create("http://localhost:" + port + path);
+    }
 
     private static final class TestSession {
         final HttpClient client;
         String csrfHeader;
         String csrfToken;
+        String phoneToken = "";
+
         TestSession(HttpClient client, String csrfHeader, String csrfToken) {
-            this.client = client; this.csrfHeader = csrfHeader; this.csrfToken = csrfToken;
+            this.client = client;
+            this.csrfHeader = csrfHeader;
+            this.csrfToken = csrfToken;
         }
     }
 }

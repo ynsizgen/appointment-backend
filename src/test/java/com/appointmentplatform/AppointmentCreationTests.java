@@ -4,6 +4,8 @@ import com.appointmentplatform.appointment.application.ApplicationService;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.identity.SubscriptionOperations;
+import com.appointmentplatform.identity.PhoneVerifications;
 import com.appointmentplatform.employee.*;
 import com.appointmentplatform.service.*;
 import com.appointmentplatform.shared.ApiException;
@@ -28,7 +30,7 @@ class AppointmentCreationTests {
     void setup() {
         // 10:00 in Istanbul: customer boundary is precisely 11:00.
         application = new ApplicationService(schedules, employees, services,
-                Clock.fixed(Instant.parse("2026-10-12T07:00:00Z"), ZoneOffset.UTC), repository, branches);
+                Clock.fixed(Instant.parse("2026-10-12T07:00:00Z"), ZoneOffset.UTC), repository, branches, mock(SubscriptionOperations.class), mock(PhoneVerifications.class));
         when(branches.brandId(branch)).thenReturn(brand);
         when(employees.branchId(employee)).thenReturn(branch);
         when(services.findById(service)).thenReturn(new ServiceDetails(service, brand, "Cut", 60));
@@ -38,11 +40,11 @@ class AppointmentCreationTests {
     }
 
     @Test void customerCanBookExactlyOneHourAhead() {
-        assertThat(application.createByCustomer(branch, request(LocalTime.of(11, 0))).startsAt())
+        assertThat(application.createByCustomer(branch, request(LocalTime.of(11, 0)), "proof").startsAt())
                 .isEqualTo(Instant.parse("2026-10-12T08:00:00Z"));
     }
     @Test void customerCannotBookOneSecondBeforeBoundary() {
-        assertThatThrownBy(() -> application.createByCustomer(branch, request(LocalTime.of(10, 59, 59))))
+        assertThatThrownBy(() -> application.createByCustomer(branch, request(LocalTime.of(10, 59, 59)), "proof"))
                 .isInstanceOf(ApiException.class).hasMessageContaining("1 saat");
         verify(repository, never()).saveAndFlush(any());
     }
@@ -51,7 +53,7 @@ class AppointmentCreationTests {
                 .isEqualTo(Instant.parse("2026-10-12T06:00:00Z"));
     }
     @Test void appointmentCannotWrapIntoNextDay() {
-        assertThatThrownBy(() -> application.createByCustomer(branch, request(LocalTime.of(23, 30))))
+        assertThatThrownBy(() -> application.createByCustomer(branch, request(LocalTime.of(23, 30)), "proof"))
                 .isInstanceOf(ApiException.class).hasMessageContaining("çalışma saatlerinin");
         verify(repository, never()).saveAndFlush(any());
     }

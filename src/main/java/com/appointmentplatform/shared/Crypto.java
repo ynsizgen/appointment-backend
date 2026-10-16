@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.*;
 import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.crypto.spec.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,16 @@ public class Crypto {
         if (bytes.length != 32) throw new IllegalStateException("APP_ENCRYPTION_KEY must be a base64-encoded 32-byte key");
         key = new SecretKeySpec(bytes, "AES");
     }
+    public String keyedHash(String value) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key.getEncoded(), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (GeneralSecurityException exception) {
+            throw new IllegalStateException("Unable to hash verification data", exception);
+        }
+    }
+
     public String token() {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);

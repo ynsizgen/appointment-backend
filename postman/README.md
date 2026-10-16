@@ -57,7 +57,7 @@ Branch çalışma saatlerini Get Working Hours ile okuyabilir, Replace Working H
 - Tarih istekleri için `scheduleDate` değişkenine `YYYY-MM-DD` biçiminde bugün veya gelecek bir tarih yaz.
 - Close Employee for Date: yalnız o tarihi kapatır. Reset Date to Weekly Hours: o gün için haftalık saatlere geri döner.
 - Get Effective Hours for Date: `configuredHours` seçilen saatler, `workingHours` branch sınırları uygulanmış saatlerdir. Employee pasifse `workingHours` boştur.
-- Bu sonuçlar randevu slotları değildir; mevcut randevuları çıkarma ve çakışma kontrolü appointment modülünde eklenecek.
+- Bu sonuçlar randevu slotları değildir; bunlar çalışma saatleridir; appointment endpoint’i PENDING/APPROVED kayıtları çıkarır.
 
 ### Working Hours klasör düzeni ve 404 kontrolü
 
@@ -90,7 +90,7 @@ Set ile normalde kapalı bir gün açılabilir. Branch saatlerini kullanan emplo
 4. Cevaptaki `availableAppointmentSlotDetails.localTimes` başlangıç saatlerini içerir.
 
 Saatler hizmet süresine göre üretilir; hizmetin tamamı çalışma aralığına sığmalıdır. Türkiye saatine göre en az bir saat sonrası listelenir. Kapalı/pasif employee veya geçmiş tarih için boş liste normaldir.
-Bu endpoint henüz mevcut randevuları çıkarmaz; randevu oluşturmaz. Frontend'in rezervasyon garantisi olarak kullanabileceği son sürüm değildir.
+Bu endpoint PENDING/APPROVED randevuları çıkarır; saati rezerve etmez. Seçim sonrası create isteği ayrıca çakışma kontrolü yapar.
 
 
 Günlük öncelik: employee tarih kaydı → employee'nin o haftanın gününe özel saat/kapalı ayarı → branch'in o tarihteki saatleri. Tarih kaydındaki boş `workingHours` açıkça kapalı demektir; branch'e geri dönmez. Tarih kaydını DELETE ile kaldırınca bu sıra yeniden uygulanır.
@@ -104,5 +104,21 @@ V13: Daha önce boş haftalık planla bütün hafta kapatılmış employee'ler i
 - `branchId`, `employeeId`, `serviceId`, `scheduleDate`, `appointmentStartTime` değişkenlerini doldur. Çalışan ilgili şubeye, hizmet ilgili brand'e ait ve çalışana atanmış olmalı.
 - `customerEmail` isteğe bağlıdır; alanı silerek deneyebilirsin. `source` gönderilmez; backend belirler. Başarılı cevap 201/PENDING olur, `appointmentId` kaydedilir; başlangıç/bitiş UTC olarak döner.
 - Otomatik integration testi: anonim müşteri kaydı, brand kaydı, source/tarihlerin DB'de doğrulanması, boş email, yanlış şube, çalışma aralığı dışı, customer geçmiş tarih reddi, brand geçmiş tarih kabulü ve anonim panel erişimi reddi.
-- Henüz OTP, abonelik/kabul kontrolü ve randevu çakışma engeli yok. Aynı saate tekrar POST göndermek şu an yeni kayıt oluşturabilir.
+- Müşteri OTP kontrolü uygulanıyor; abonelik ve şube kabul kontrolü uygulanıyor. Aynı çalışana çakışan saat için tekrar POST göndermek 409 döndürür; eşzamanlı istekler V17 veritabanı constraint’iyle korunur.
 - Collection dosyasını Postman'e yeniden import et; açık uygulamadaki kopya kendiliğinden güncellenmez.
+
+## Yeni kayıt izni
+
+Her iki create isteğinden önce admin hesabıyla brand hesabının `subscriptionActive` alanını true yap; ardından brand hesabıyla `Branches → Open Appointment Acceptance` isteğini çalıştır. Admin/brand login değişikliklerinden sonra CSRF token'ı yenile.
+
+Abonelik pasifse veya şube kabulü kapalıysa create 409 döner ve nedenini detail alanında açıklar. İkisi de açıkken diğer doğrulamalar uygunsa 201 döner. Bu ayarlar panel girişini engellemez ve mevcut randevuları silmez. Müşteri için anonimliğini koruyup yeniden CSRF al; aşağıdaki OTP adımlarını uygula.
+
+## Customer OTP kullanımı
+
+`Appointments → Customer Creation` klasöründe sırasıyla:
+
+1. `01 Request SMS Code`: customerPhone değişkenini doldur. Dev backend logundaki `DEV SMS` satırından kodu al ve smsCode değişkenine yaz.
+2. `02 Verify SMS Code`: doğrulanınca phoneVerificationToken otomatik kaydedilir.
+3. `Create Appointment as Customer`: aynı telefon ve X-Phone-Verification header'ı gönderilir. Başarılı kayıtta token tüketilir; yeni randevu için yeniden doğrulama gerekir. Başarısız randevuda token süresi dolmadıysa yeniden denenebilir.
+
+Kod 2 dakika geçerlidir; 3 yanlış denemeden sonra kullanılamaz. Yeni kod için 60 saniye beklenir; son bir saat içinde en fazla 3 gönderim yapılır. 429 cevabındaki Retry-After bekleme süresidir. Doğrulama token'ı 5 dakika geçerlidir. Kod veya token başka telefonda kullanılamaz. Brand Creation OTP istemez. Gerçek SMS sağlayıcısı bağlı değildir; sadece dev profilinde log üzerinden denenir, prod profilinde gönderim 503 döner.

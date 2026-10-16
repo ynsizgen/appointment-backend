@@ -10,5 +10,7 @@ public interface BranchOperations {
 
     UUID brandId(UUID branchId);
 
+    void requireAcceptingAppointments(UUID branchId, UUID brandId);
+
     void requireOwnedBy(UUID branchId, UUID brandId);
 }

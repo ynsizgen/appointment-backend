@@ -1,6 +1,7 @@
 package com.appointmentplatform.identity.persistence;
 
 import com.appointmentplatform.identity.domain.UserAccount;
+import com.appointmentplatform.identity.domain.Role;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.*;
@@ -8,6 +9,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, UUID> {
     Optional<UserAccount> findByEmail(String email);
+
+    boolean existsByBrandIdAndRoleAndSubscriptionActiveTrue(UUID brandId, Role role);
 
     org.springframework.data.domain.Page<UserAccount> findByRole(com.appointmentplatform.identity.domain.Role role, org.springframework.data.domain.Pageable pageable);
 
