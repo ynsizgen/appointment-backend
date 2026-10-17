@@ -245,4 +245,19 @@ public class ApplicationService {
 
         appointment.setStatus(AppointmentStatus.REJECTED);
     }
+    @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public void cancelAppointment(UUID brandId, UUID appointmentId) {
+        Appointment appointment = appointmentRepository.findByIdForUpdate(appointmentId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Randevu bulunamadı."));
+
+        branchOperations.requireOwnedBy(appointment.getBranchId(), brandId);
+
+        if (appointment.getStatus() != AppointmentStatus.PENDING
+                && appointment.getStatus() != AppointmentStatus.APPROVED) {
+            throw new ApiException(HttpStatus.CONFLICT, "Yalnızca bekleyen veya onaylı randevular iptal edilebilir.");
+        }
+
+        appointment.setStatus(AppointmentStatus.CANCELLED);
+    }
 }

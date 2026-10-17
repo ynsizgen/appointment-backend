@@ -125,6 +125,14 @@ Kod 2 dakika geçerlidir; 3 yanlış denemeden sonra kullanılamaz. Yeni kod iç
 
 ## Randevu onaylama ve reddetme
 
-`Appointments → Approval and Rejection` altında `Approve Appointment` ve `Reject Appointment` var. Randevunun sahibi brand ile giriş yapıp CSRF yenile. `appointmentId` oluşturma cevabından otomatik alınır; body gönderilmez. Başarı 200 ve boş body döner.
+`Appointments → Appointment Actions` altında `Approve Appointment` ve `Reject Appointment` var. Randevunun sahibi brand ile giriş yapıp CSRF yenile. `appointmentId` oluşturma cevabından otomatik alınır; body gönderilmez. Başarı 200 ve boş body döner.
 
 İki işlemi denemek için ayrı PENDING randevular kullan. Aynı ID ile `Again (409)` isteği durum değişikliğinin tekrar yapılamadığını kontrol eder. Başka brand'in randevusu veya bulunmayan ID 404 döner. REJECTED kayıt silinmez, saati serbest kalır. V19 migration uygulanmış olmalı. Güncel collection dosyasını yeniden import et.
+
+## Brand appointment actions — 17 October 2026
+
+Postman: `Appointments → Appointment Actions`. POST panel endpoints: `/api/panel/appointment/approve-appointment/{appointmentId}`, `/reject-appointment/{appointmentId}` and `/cancel-appointment/{appointmentId}` (same prefix). Use the owning BRAND session and CSRF, with no body. Success returns 200 with an empty body.
+
+Approval/rejection require PENDING. Cancellation accepts PENDING or APPROVED and sets CANCELLED. Missing/foreign records return 404; invalid/repeated transitions return 409. A row lock serializes concurrent decisions. Cancelled/rejected records remain stored and no longer block time; retrying cancellation cannot affect a replacement booking. Cancellation does not require an active subscription or branch acceptance. V19 permits REJECTED and V20 permits CANCELLED; V17 still blocks only PENDING/APPROVED.
+
+Customer cancellation links, cancellation cutoff snapshots, and rejection/cancellation SMS remain pending. Reimport the collection to see new requests.

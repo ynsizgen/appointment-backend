@@ -712,7 +712,7 @@ class IdentityBrandIntegrationTests {
                 .plusWeeks(1).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
         String base = "/api/panel/appointment/";
 
-        for (int scenario = 0; scenario < 3; scenario++) {
+        for (int scenario = 0; scenario < 4; scenario++) {
             String body = """
                     {"employeeId":"%s","serviceId":"%s","date":"%s","startTime":"10:00",
                      "customerFirstName":"Ada","customerLastName":"Lovelace","customerPhone":"+905551112233"}
@@ -722,8 +722,9 @@ class IdentityBrandIntegrationTests {
             UUID id = UUID.fromString(json.readTree(created.body()).get("id").asText());
             String approve = base + "approve-appointment/" + id;
             String reject = base + "reject-appointment/" + id;
+            String cancel = base + "cancel-appointment/" + id;
 
-            for (String path : List.of(approve, reject)) {
+            for (String path : List.of(approve, reject, cancel)) {
                 assertThat(post(anonymous, path, "").statusCode()).isEqualTo(401);
                 assertThat(post(other, path, "").statusCode()).isEqualTo(404);
             }
@@ -735,7 +736,7 @@ class IdentityBrandIntegrationTests {
                 assertThat(response.body()).isEmpty();
                 assertThat(appointments.findById(id).orElseThrow().getStatus())
                         .isEqualTo(scenario == 0 ? AppointmentStatus.APPROVED : AppointmentStatus.REJECTED);
-            } else {
+            } else if (scenario == 2) {
                 var barrier = new CyclicBarrier(2);
                 try (var executor = Executors.newFixedThreadPool(2)) {
                     var approval = executor.submit(() -> {
@@ -754,6 +755,36 @@ class IdentityBrandIntegrationTests {
                 }
             }
 
+            var beforeCancellation = appointments.findById(id).orElseThrow();
+            if (beforeCancellation.getStatus() == AppointmentStatus.REJECTED) {
+                assertThat(post(owner, cancel, "").statusCode()).isEqualTo(409);
+                assertThat(appointments.findById(id).orElseThrow().getStatus()).isEqualTo(AppointmentStatus.REJECTED);
+            } else {
+                var barrier = new CyclicBarrier(2);
+                try (var executor = Executors.newFixedThreadPool(2)) {
+                    var first = executor.submit(() -> {
+                        barrier.await(10, TimeUnit.SECONDS);
+                        return post(owner, cancel, "").statusCode();
+                    });
+                    var second = executor.submit(() -> {
+                        barrier.await(10, TimeUnit.SECONDS);
+                        return post(owner, cancel, "").statusCode();
+                    });
+                    assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+                            .containsExactlyInAnyOrder(200, 409);
+                }
+                assertThat(appointments.findById(id).orElseThrow().getStatus()).isEqualTo(AppointmentStatus.CANCELLED);
+                assertThat(appointments.findBlockingInRange(UUID.fromString(employeeId),
+                        beforeCancellation.getStartsAt(), beforeCancellation.getEndsAt(),
+                        List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED))).isEmpty();
+                var replacement = post(owner, base + "create", body);
+                assertThat(replacement.statusCode()).as(replacement.body()).isEqualTo(201);
+                UUID replacementId = UUID.fromString(json.readTree(replacement.body()).get("id").asText());
+                assertThat(post(owner, cancel, "").statusCode()).isEqualTo(409);
+                assertThat(appointments.findById(replacementId).orElseThrow().getStatus()).isEqualTo(AppointmentStatus.PENDING);
+            }
+            assertThat(post(other, cancel, "").statusCode()).isEqualTo(404);
+
             for (String path : List.of(approve, reject)) {
                 var conflict = post(owner, path, "");
                 assertThat(conflict.statusCode()).as(conflict.body()).isEqualTo(409);
@@ -761,7 +792,7 @@ class IdentityBrandIntegrationTests {
                 assertThat(post(other, path, "").statusCode()).isEqualTo(404);
             }
         }
-        for (String action : List.of("approve-appointment/", "reject-appointment/")) {
+        for (String action : List.of("approve-appointment/", "reject-appointment/", "cancel-appointment/")) {
             assertThat(post(owner, base + action + UUID.randomUUID(), "").statusCode()).isEqualTo(404);
         }
     }

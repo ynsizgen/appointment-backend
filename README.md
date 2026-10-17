@@ -161,3 +161,11 @@ Both BRAND and CUSTOMER creation require the brand account's active subscription
 Codes expire after two minutes, allow three wrong guesses, require 60 seconds between sends and allow at most three sends per rolling hour per phone. Resend invalidates previous verification. IP limits add 20 send requests / 15 minutes and 60 verify requests / 15 minutes. Failed guesses commit their counters. Per-phone database locks protect concurrent requests and single-use consumption. Codes and phone lookup keys use HMAC-SHA256 with the configured secret; proof tokens are high-entropy and stored only as hashes. V18 creates verification/rate-history tables. Codes are not returned in HTTP responses and are not automatically retried.
 
 `SmsSender` is the notification module contract. `DevSmsSender` exists only under `dev` without `prod`. Other profiles use `UnavailableSmsSender`, returning 503 without logging codes. A real provider adapter is still required for production. Integration tests use a mock sender; they never send real SMS.
+
+## Brand appointment actions — 17 October 2026
+
+Postman: `Appointments → Appointment Actions`. POST panel endpoints: `/api/panel/appointment/approve-appointment/{appointmentId}`, `/reject-appointment/{appointmentId}` and `/cancel-appointment/{appointmentId}` (same prefix). Use the owning BRAND session and CSRF, with no body. Success returns 200 with an empty body.
+
+Approval/rejection require PENDING. Cancellation accepts PENDING or APPROVED and sets CANCELLED. Missing/foreign records return 404; invalid/repeated transitions return 409. A row lock serializes concurrent decisions. Cancelled/rejected records remain stored and no longer block time; retrying cancellation cannot affect a replacement booking. Cancellation does not require an active subscription or branch acceptance. V19 permits REJECTED and V20 permits CANCELLED; V17 still blocks only PENDING/APPROVED.
+
+Customer cancellation links, cancellation cutoff snapshots, and rejection/cancellation SMS remain pending. Reimport the collection to see new requests.

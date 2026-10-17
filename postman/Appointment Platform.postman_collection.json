@@ -1822,8 +1822,8 @@
           ]
         },
         {
-          "name": "Approval and Rejection",
-          "description": "Manual alternatives: approve one PENDING appointment or reject another. Rejection keeps the record and releases its time. Do not run both success requests on the same appointmentId.",
+          "name": "Appointment Actions",
+          "description": "Approve or reject a PENDING appointment; cancel a PENDING or APPROVED appointment. Use separate records for alternative actions. Again requests expect 409. Creation saves appointmentId.",
           "item": [
             {
               "name": "Approve Appointment",
@@ -1963,6 +1963,78 @@
                     "exec": [
                       "pm.test('Status is 409', () => pm.response.to.have.status(409));",
                       "pm.test('Conflict explained', () => pm.expect(pm.response.json().detail).to.include('artık onay beklemiyor')); "
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cancel Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/cancel-appointment/{{appointmentId}}",
+                "description": "Owning BRAND session and CSRF required. No body. PENDING or APPROVED becomes CANCELLED; record remains and time is released. Success: 200, empty body. REJECTED/already CANCELLED: 409. Missing/foreign ID: 404. Run Again only after a successful cancellation with the same appointmentId."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get('appointmentId') || '')) throw new Error('Set appointmentId to an existing appointment UUID.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Empty response', () => pm.expect(pm.response.text()).to.eql(''));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cancel Appointment Again (409)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/cancel-appointment/{{appointmentId}}",
+                "description": "Owning BRAND session and CSRF required. No body. PENDING or APPROVED becomes CANCELLED; record remains and time is released. Success: 200, empty body. REJECTED/already CANCELLED: 409. Missing/foreign ID: 404. Run Again only after a successful cancellation with the same appointmentId."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get('appointmentId') || '')) throw new Error('Set appointmentId to an existing appointment UUID.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Conflict explained', () => pm.expect(pm.response.json().detail).to.include('iptal edilebilir'));"
                     ]
                   }
                 }

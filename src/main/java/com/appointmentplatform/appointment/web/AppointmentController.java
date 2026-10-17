@@ -62,4 +62,12 @@ public class AppointmentController {
     ){
         applicationService.rejectAppointment(brandId,appointmentId);
     }
+
+    @PostMapping("/cancel-appointment/{appointmentId}")
+    public void cancelAppointment(
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @PathVariable UUID appointmentId
+    ) {
+        applicationService.cancelAppointment(brandId, appointmentId);
+    }
 }
