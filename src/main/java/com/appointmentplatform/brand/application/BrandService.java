@@ -26,6 +26,25 @@ public class BrandService implements BrandOperations {
     public BrandDetails own(UUID brandId) {
         var brand = repository.findById(brandId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Marka bulunamadı."));
-        return new BrandDetails(brand.id(), brand.displayName());
+        return new BrandDetails(brand.id(), brand.displayName(), brand.cancellationNoticeHours());
+    }
+
+    @Override
+    public int cancellationNoticeHours(UUID brandId) {
+        var brand = repository.findById(brandId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Marka bulunamadı."));
+        return brand.cancellationNoticeHours();
+    }
+
+    @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public BrandDetails updateCancellationPolicy(UUID brandId, int hours) {
+        if (hours < 0 || hours > 168) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "İptal süresi 0 ile 168 saat arasında olmalıdır.");
+        }
+        var brand = repository.findById(brandId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Marka bulunamadı."));
+        brand.changeCancellationNoticeHours(hours);
+        return new BrandDetails(brand.id(), brand.displayName(), brand.cancellationNoticeHours());
     }
 }

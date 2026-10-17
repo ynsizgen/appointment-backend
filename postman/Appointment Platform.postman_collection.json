@@ -474,6 +474,46 @@
             }
           ],
           "response": []
+        },
+        {
+          "name": "Update Cancellation Policy",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "{{csrfHeader}}",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/panel/brand/cancellation-policy",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cancellationNoticeHours\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Login as BRAND and refresh CSRF. Integer hours 0–168, default 0 (until appointment start). Applies only to new appointments; existing cancellationDeadline values never change. GET /api/panel/brand also returns this setting."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Updated', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.test('Policy matches request', () => pm.expect(pm.response.json().cancellationNoticeHours).to.eql(JSON.parse(pm.variables.replaceIn(pm.request.body.raw)).cancellationNoticeHours));"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
       ]
     },
@@ -1633,7 +1673,7 @@
                     }
                   }
                 },
-                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking."
+                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking. Response includes cancellationDeadline (UTC), captured from the brand policy at creation. Later policy changes do not alter it."
               },
               "event": [
                 {
@@ -1642,7 +1682,8 @@
                     "type": "text/javascript",
                     "exec": [
                       "pm.test('Created', () => pm.response.to.have.status(201));",
-                      "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }"
+                      "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }",
+                      "if (pm.response.code === 201) pm.test('Cancellation deadline is valid', () => { const a = pm.response.json(); pm.expect(Number.isFinite(Date.parse(a.cancellationDeadline))).to.eql(true); pm.expect(Date.parse(a.cancellationDeadline)).to.be.at.most(Date.parse(a.startsAt)); });"
                     ]
                   }
                 }
@@ -1802,7 +1843,7 @@
                     }
                   }
                 },
-                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. Run Request SMS Code then Verify SMS Code first. Token is bound to customerPhone, expires after 5 minutes and is consumed only by a successful booking. Omit customerEmail to test optional email. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking."
+                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. Run Request SMS Code then Verify SMS Code first. Token is bound to customerPhone, expires after 5 minutes and is consumed only by a successful booking. Omit customerEmail to test optional email. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking. Response includes cancellationDeadline (UTC), captured from the brand policy at creation. Later policy changes do not alter it."
               },
               "event": [
                 {
@@ -1812,7 +1853,8 @@
                     "exec": [
                       "pm.test('Created', () => pm.response.to.have.status(201));",
                       "if (pm.response.code === 201) { const a = pm.response.json(); pm.collectionVariables.set('appointmentId', a.id); pm.test('Appointment matches request', () => { pm.expect(a.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(a.serviceId).to.eql(pm.variables.get('serviceId')); pm.expect(a.status).to.eql('PENDING'); pm.expect(Date.parse(a.endsAt) - Date.parse(a.startsAt)).to.eql(a.durationMinutes * 60000); }); }",
-                      "if (pm.response.code === 201) pm.collectionVariables.set('phoneVerificationToken', '');"
+                      "if (pm.response.code === 201) pm.collectionVariables.set('phoneVerificationToken', '');",
+                      "if (pm.response.code === 201) pm.test('Cancellation deadline is valid', () => { const a = pm.response.json(); pm.expect(Number.isFinite(Date.parse(a.cancellationDeadline))).to.eql(true); pm.expect(Date.parse(a.cancellationDeadline)).to.be.at.most(Date.parse(a.startsAt)); });"
                     ]
                   }
                 }

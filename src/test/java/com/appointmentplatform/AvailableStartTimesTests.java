@@ -5,6 +5,7 @@ import com.appointmentplatform.appointment.AppointmentStatus;
 import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.brand.BrandOperations;
 import com.appointmentplatform.identity.SubscriptionOperations;
 import com.appointmentplatform.identity.PhoneVerifications;
 import com.appointmentplatform.employee.*;
@@ -66,7 +67,7 @@ class AvailableStartTimesTests {
         when(repository.findBlockingInRange(employee, date.atStartOfDay(zone).toInstant(), date.plusDays(1).atStartOfDay(zone).toInstant(),
                 List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED))).thenReturn(appointments);
         var application = new ApplicationService(schedules, employees, services,
-                Clock.fixed(date.atTime(7, 0).atZone(zone).toInstant(), ZoneOffset.UTC), repository, mock(BranchOperations.class), mock(SubscriptionOperations.class), mock(PhoneVerifications.class));
+                Clock.fixed(date.atTime(7, 0).atZone(zone).toInstant(), ZoneOffset.UTC), repository, mock(BranchOperations.class), mock(SubscriptionOperations.class), mock(PhoneVerifications.class), mock(BrandOperations.class));
         List<LocalTime> wanted = expected.isEmpty() ? List.of() : Arrays.stream(expected.split(",")).map(LocalTime::parse).toList();
         assertThat(application.getAvailableStartTimes(brand, service, employee, date).localTimes()).containsExactlyElementsOf(wanted);
         verify(services).requireOwnedBy(service, brand);

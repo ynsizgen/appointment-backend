@@ -12,6 +12,15 @@ public class Brand {
     @org.hibernate.annotations.CreationTimestamp(source = org.hibernate.annotations.SourceType.DB)
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+    @Column(nullable = false)
+    private int cancellationNoticeHours;
+
+    public void changeCancellationNoticeHours(int hours) {
+        if (hours < 0 || hours > 168) {
+            throw new IllegalArgumentException("İptal süresi 0 ile 168 saat arasında olmalıdır.");
+        }
+        this.cancellationNoticeHours = hours;
+    }
 
     protected Brand() {
 
@@ -28,5 +37,8 @@ public class Brand {
     }
     public Instant createdAt() {
         return createdAt;
+    }
+    public int cancellationNoticeHours() {
+        return cancellationNoticeHours;
     }
 }

@@ -639,6 +639,8 @@ class IdentityBrandIntegrationTests {
         String pastBody = body.replace(date.toString(), date.minusWeeks(4).toString());
         assertThat(post(customer, publicPath, pastBody).statusCode()).isEqualTo(400);
         assertThat(post(customer, publicPath, body.replace("+905551112233", "+905551112234")).statusCode()).isEqualTo(403);
+        assertThat(patch(owner, "/api/panel/brand/cancellation-policy",
+                "{\"cancellationNoticeHours\":3}").statusCode()).isEqualTo(200);
         var created = post(customer, publicPath, body);
         assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
         assertThat(post(customer, publicPath, body.replace("10:00", "15:00")).statusCode()).isEqualTo(403);
@@ -647,6 +649,8 @@ class IdentityBrandIntegrationTests {
         assertThat(duplicate.body()).contains("başka bir randevusu var");
         var result = json.readTree(created.body());
         var saved = appointments.findById(UUID.fromString(result.get("id").asText())).orElseThrow();
+        assertThat(saved.getCancellationDeadline()).isEqualTo(saved.getStartsAt().minusSeconds(3 * 3600));
+        assertThat(result.get("cancellationDeadline").asText()).isEqualTo(saved.getCancellationDeadline().toString());
         assertThat(saved.getSource()).isEqualTo(AppointmentSource.CUSTOMER);
         assertThat(saved.getCustomerEmail()).isNull();
         assertThat(saved.getStartsAt()).isEqualTo(date.atTime(10, 0).atZone(ZoneId.of("Europe/Istanbul")).toInstant());
@@ -665,10 +669,15 @@ class IdentityBrandIntegrationTests {
         assertThat(appointments.findBlockingInRange(employeeUuid, saved.getStartsAt(), saved.getEndsAt(), List.of(pending, approved)))
                 .extracting(a -> a.getId()).containsExactly(saved.getId());
 
+        assertThat(patch(owner, "/api/panel/brand/cancellation-policy",
+                "{\"cancellationNoticeHours\":5}").statusCode()).isEqualTo(200);
+        assertThat(appointments.findById(saved.getId()).orElseThrow().getCancellationDeadline())
+                .isEqualTo(saved.getStartsAt().minusSeconds(3 * 3600));
         var brandCreated = post(owner, "/api/panel/appointment/create", pastBody);
         assertThat(brandCreated.statusCode()).as(brandCreated.body()).isEqualTo(201);
         var brandSaved = appointments.findById(UUID.fromString(json.readTree(brandCreated.body()).get("id").asText())).orElseThrow();
         assertThat(brandSaved.getSource()).isEqualTo(AppointmentSource.BRAND);
+        assertThat(brandSaved.getCancellationDeadline()).isEqualTo(brandSaved.getStartsAt().minusSeconds(5 * 3600));
         verifyPhone(customer, "+905551112235");
         // An open branch alone is insufficient; disabling subscription preserves old bookings and panel access.
         account.changeStatus(true, false, clock.instant());
@@ -794,6 +803,30 @@ class IdentityBrandIntegrationTests {
         }
         for (String action : List.of("approve-appointment/", "reject-appointment/", "cancel-appointment/")) {
             assertThat(post(owner, base + action + UUID.randomUUID(), "").statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void cancellationPolicyValidatesInputAndOnlyUpdatesLoggedInBrand() throws Exception {
+        String email = "policy-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(email, "Policy Brand");
+        var owner = loginBrand(email);
+        String otherEmail = "policy-other-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(otherEmail, "Other Policy Brand");
+        var other = loginBrand(otherEmail);
+        String path = "/api/panel/brand/cancellation-policy";
+        assertThat(json.readTree(get(owner, "/api/panel/brand").body()).get("cancellationNoticeHours").asInt()).isZero();
+        assertThat(patch(session(), path, "{\"cancellationNoticeHours\":3}").statusCode()).isEqualTo(401);
+        for (String body : List.of("{}", "{\"cancellationNoticeHours\":null}",
+                "{\"cancellationNoticeHours\":-1}", "{\"cancellationNoticeHours\":169}")) {
+            assertThat(patch(owner, path, body).statusCode()).as(body).isEqualTo(400);
+        }
+        for (int hours : List.of(168, 3, 0)) {
+            var result = patch(owner, path, "{\"cancellationNoticeHours\":" + hours + "}");
+            assertThat(result.statusCode()).as(result.body()).isEqualTo(200);
+            assertThat(json.readTree(result.body()).get("cancellationNoticeHours").asInt()).isEqualTo(hours);
+            assertThat(json.readTree(get(owner, "/api/panel/brand").body()).get("cancellationNoticeHours").asInt()).isEqualTo(hours);
+            assertThat(json.readTree(get(other, "/api/panel/brand").body()).get("cancellationNoticeHours").asInt()).isZero();
         }
     }
 

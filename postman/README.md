@@ -135,4 +135,10 @@ Postman: `Appointments → Appointment Actions`. POST panel endpoints: `/api/pan
 
 Approval/rejection require PENDING. Cancellation accepts PENDING or APPROVED and sets CANCELLED. Missing/foreign records return 404; invalid/repeated transitions return 409. A row lock serializes concurrent decisions. Cancelled/rejected records remain stored and no longer block time; retrying cancellation cannot affect a replacement booking. Cancellation does not require an active subscription or branch acceptance. V19 permits REJECTED and V20 permits CANCELLED; V17 still blocks only PENDING/APPROVED.
 
-Customer cancellation links, cancellation cutoff snapshots, and rejection/cancellation SMS remain pending. Reimport the collection to see new requests.
+Customer cancellation links and rejection/cancellation SMS remain pending. Cancellation cutoff snapshots are implemented in V21. Reimport the collection to see new requests.
+
+## Brand cancellation policy — 17 October 2026
+
+`PATCH /api/panel/brand/cancellation-policy` accepts `{"cancellationNoticeHours":3}` for the authenticated BRAND. CSRF required. Integer hours 0–168; default 0 means until the appointment starts. Missing/null/out-of-range values return 400. The 200 response and GET `/api/panel/brand` include the setting. Postman: Brand → Update Cancellation Policy.
+
+Both brand and customer creation store and return `cancellationDeadline = startsAt - cancellationNoticeHours` as an Instant. Changing the policy affects only new bookings. V21 adds the setting and backfills existing bookings with their start time (initial zero-hour policy). Brand cancellation is not limited by this deadline. Customer token/link and deadline enforcement endpoint remain to be implemented; this change prepares the policy and snapshot only.

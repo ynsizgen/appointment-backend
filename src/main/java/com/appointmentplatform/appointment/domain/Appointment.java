@@ -6,8 +6,6 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.UUID;
 
 @Entity
@@ -46,10 +44,30 @@ public class Appointment {
     private AppointmentSource source;
     @Column(nullable = false)
     private Instant createdAt;
+    @Column(nullable = false, updatable = false)
+    private Instant cancellationDeadline;
+
 
     protected Appointment() {}
 
-    public Appointment(UUID id, UUID branchId, UUID employeeId, UUID serviceId, String serviceName, int durationMinutes, String customerFirstName, String customerLastName, String customerPhone, String customerEmail, Instant startsAt, Instant endsAt, AppointmentStatus status,AppointmentSource source, Instant createdAt) {
+    public Appointment(
+            UUID id,
+            UUID branchId,
+            UUID employeeId,
+            UUID serviceId,
+            String serviceName,
+            int durationMinutes,
+            String customerFirstName,
+            String customerLastName,
+            String customerPhone,
+            String customerEmail,
+            Instant startsAt,
+            Instant endsAt,
+            AppointmentStatus status,
+            AppointmentSource source,
+            Instant createdAt,
+            Instant cancellationDeadline
+    ) {
         this.id = id;
         this.branchId = branchId;
         this.employeeId = employeeId;
@@ -65,6 +83,7 @@ public class Appointment {
         this.status = status;
         this.source = source;
         this.createdAt = createdAt;
+        this.cancellationDeadline = cancellationDeadline;
     }
 
     public UUID getId() {
@@ -185,5 +204,9 @@ public class Appointment {
 
     public void setSource(AppointmentSource source) {
         this.source = source;
+    }
+
+    public Instant getCancellationDeadline() {
+        return cancellationDeadline;
     }
 }

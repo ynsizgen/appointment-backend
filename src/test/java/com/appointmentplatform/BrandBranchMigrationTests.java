@@ -78,6 +78,42 @@ class BrandBranchMigrationTests {
         }
     }
 
+    @Test
+    void cancellationPolicyUpgradePreservesBookingsAndSetsZeroHourDeadline() throws Exception {
+        try (var database = new PostgreSQLContainer("postgres:17")) {
+            database.start();
+            Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+                    .schemas("appointment").target("20").load().migrate();
+            sql(database, """
+                INSERT INTO appointment.brands(id, display_name)
+                VALUES ('00000000-0000-0000-0000-000000000001', 'Brand');
+                INSERT INTO appointment.branches(id, brand_id, name, address)
+                VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Branch', 'Address');
+                INSERT INTO appointment.employees(id, branch_id, first_name, last_name, active)
+                VALUES ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'Ada', 'Lovelace', true);
+                INSERT INTO appointment.services(id, brand_id, display_name, duration_minutes)
+                VALUES ('00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001', 'Cut', 60);
+                INSERT INTO appointment.appointments(id, branch_id, employee_id, service_id, service_name,
+                    duration_minutes, customer_first_name, customer_last_name, customer_phone,
+                    starts_at, ends_at, status, source, created_at)
+                VALUES ('00000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000002',
+                    '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000004',
+                    'Cut', 60, 'Ada', 'Lovelace', '+905551112233',
+                    '2030-01-01T10:00:00+03:00', '2030-01-01T11:00:00+03:00', 'PENDING', 'CUSTOMER', now());
+                """);
+            var current = Flyway.configure().dataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword())
+                    .schemas("appointment").load();
+            current.migrate();
+            current.validate();
+            assertThat(sql(database, "SELECT cancellation_notice_hours FROM appointment.brands")).isEqualTo("0");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.appointments WHERE cancellation_deadline = starts_at AND status = 'PENDING'"))
+                    .isEqualTo("1");
+            sql(database, "UPDATE appointment.brands SET cancellation_notice_hours = 3");
+            assertThat(sql(database, "SELECT count(*) FROM appointment.appointments WHERE cancellation_deadline = starts_at"))
+                    .isEqualTo("1");
+        }
+    }
+
     private String sql(PostgreSQLContainer database, String query) throws Exception {
         var result = database.execInContainer("psql", "-U", database.getUsername(), "-d", database.getDatabaseName(),
                 "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", query);

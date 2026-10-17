@@ -4,8 +4,6 @@ import com.appointmentplatform.appointment.application.AppointmentDetails;
 import com.appointmentplatform.appointment.AppointmentStatus;
 
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.UUID;
 
 public record AppointmentCreationResponse(
@@ -17,7 +15,8 @@ public record AppointmentCreationResponse(
         int durationMinutes,
         Instant startsAt,
         Instant endsAt,
-        AppointmentStatus status
+        AppointmentStatus status,
+        Instant cancellationDeadline
 ) {
     public static AppointmentCreationResponse from(AppointmentDetails details) {
         return new AppointmentCreationResponse(
@@ -29,7 +28,8 @@ public record AppointmentCreationResponse(
                 details.durationMinutes(),
                 details.startsAt(),
                 details.endsAt(),
-                details.status()
+                details.status(),
+                details.cancellationDeadline()
         );
     }
 }

@@ -3,7 +3,6 @@ package com.appointmentplatform.appointment.application;
 import com.appointmentplatform.appointment.AppointmentStatus;
 
 import java.time.Instant;
-import java.time.LocalTime;
 import java.util.UUID;
 
 public record AppointmentDetails(
@@ -15,5 +14,6 @@ public record AppointmentDetails(
         int durationMinutes,
         Instant startsAt,
         Instant endsAt,
-        AppointmentStatus status
+        AppointmentStatus status,
+        Instant cancellationDeadline
 ) {}

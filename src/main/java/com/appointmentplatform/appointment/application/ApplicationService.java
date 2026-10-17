@@ -9,6 +9,7 @@ import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.brand.BrandOperations;
 import com.appointmentplatform.identity.SubscriptionOperations;
 import com.appointmentplatform.identity.PhoneVerifications;
 import com.appointmentplatform.employee.EmployeeDailyScheduleDetails;
@@ -39,9 +40,19 @@ public class ApplicationService {
     private final BranchOperations branchOperations;
     private final SubscriptionOperations subscriptions;
     private final PhoneVerifications phoneVerifications;
+    private final BrandOperations brands;
 
-    public ApplicationService(EmployeeScheduleOperations employeeScheduleOperations, EmployeeOperations employeeOperations, ServiceOperations serviceOperations, Clock clock, AppointmentRepository appointmentRepository, BranchOperations branchOperations,
-                              SubscriptionOperations subscriptions, PhoneVerifications phoneVerifications) {
+    public ApplicationService(
+            EmployeeScheduleOperations employeeScheduleOperations,
+            EmployeeOperations employeeOperations,
+            ServiceOperations serviceOperations,
+            Clock clock,
+            AppointmentRepository appointmentRepository,
+            BranchOperations branchOperations,
+            SubscriptionOperations subscriptions,
+            PhoneVerifications phoneVerifications,
+            BrandOperations brands
+    ) {
         this.employeeScheduleOperations = employeeScheduleOperations;
         this.employeeOperations = employeeOperations;
         this.serviceOperations = serviceOperations;
@@ -50,6 +61,7 @@ public class ApplicationService {
         this.branchOperations = branchOperations;
         this.subscriptions = subscriptions;
         this.phoneVerifications = phoneVerifications;
+        this.brands = brands;
     }
 
 
@@ -208,11 +220,37 @@ public class ApplicationService {
         }
 
 
-        Appointment appointment = appointmentRepository.saveAndFlush(new Appointment(UUID.randomUUID(), branchId,  request.employeeId(), request.serviceId(),
-                service.displayName(), service.durationMinutes(), request.customerFirstName(), request.customerLastName().strip(), request.customerPhone().strip(),
-                email, startAt, endAt, AppointmentStatus.PENDING, source ,clock.instant()));
+        Instant cancellationDeadline = startAt.minus(Duration.ofHours(brands.cancellationNoticeHours(brandId)));
 
-        return new AppointmentDetails(appointment.getId(),appointment.getBranchId(),appointment.getEmployeeId(), appointment.getServiceId(),appointment.getServiceName(), appointment.getDurationMinutes(),appointment.getStartsAt(),appointment.getEndsAt(),appointment.getStatus());
+        Appointment appointment = appointmentRepository.saveAndFlush(new Appointment(
+                UUID.randomUUID(),
+                branchId,
+                request.employeeId(),
+                request.serviceId(),
+                service.displayName(),
+                service.durationMinutes(),
+                request.customerFirstName(),
+                request.customerLastName().strip(),
+                request.customerPhone().strip(),
+                email,
+                startAt,
+                endAt,
+                AppointmentStatus.PENDING,
+                source,
+                clock.instant(),
+                cancellationDeadline));
+
+        return new AppointmentDetails(
+                appointment.getId(),
+                appointment.getBranchId(),
+                appointment.getEmployeeId(),
+                appointment.getServiceId(),
+                appointment.getServiceName(),
+                appointment.getDurationMinutes(),
+                appointment.getStartsAt(),
+                appointment.getEndsAt(),
+                appointment.getStatus(),
+                appointment.getCancellationDeadline());
 
     }
     @Transactional

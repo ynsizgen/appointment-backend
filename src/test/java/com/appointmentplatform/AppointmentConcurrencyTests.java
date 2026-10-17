@@ -77,7 +77,8 @@ class AppointmentConcurrencyTests {
                 base.plusSeconds(endMinute * 60L),
                 status,
                 AppointmentSource.CUSTOMER,
-                Instant.now());
+                Instant.now(),
+                base.plusSeconds(startMinute * 60L));
     }
 
     @Test
