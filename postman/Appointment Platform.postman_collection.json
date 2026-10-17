@@ -1820,6 +1820,156 @@
               "response": []
             }
           ]
+        },
+        {
+          "name": "Approval and Rejection",
+          "description": "Manual alternatives: approve one PENDING appointment or reject another. Rejection keeps the record and releases its time. Do not run both success requests on the same appointmentId.",
+          "item": [
+            {
+              "name": "Approve Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/approve-appointment/{{appointmentId}}",
+                "description": "Login as the owning BRAND and refresh CSRF. Set appointmentId to a PENDING appointment (creation saves it automatically). No body. Success returns 200 with an empty body. Approve and Reject require separate PENDING appointments. Missing or another brand’s appointment returns 404. A non-PENDING appointment returns 409."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get('appointmentId') || '')) throw new Error('Set appointmentId to an existing appointment UUID.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Empty response', () => pm.expect(pm.response.text()).to.eql(''));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Approve Appointment Again (409)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/approve-appointment/{{appointmentId}}",
+                "description": "Run the matching action successfully first, then repeat with the same appointmentId. Expect 409."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get('appointmentId') || '')) throw new Error('Set appointmentId to an existing appointment UUID.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Conflict explained', () => pm.expect(pm.response.json().detail).to.include('artık onay beklemiyor')); "
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reject Appointment",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/reject-appointment/{{appointmentId}}",
+                "description": "Login as the owning BRAND and refresh CSRF. Set appointmentId to a PENDING appointment (creation saves it automatically). No body. Success returns 200 with an empty body. Approve and Reject require separate PENDING appointments. Missing or another brand’s appointment returns 404. A non-PENDING appointment returns 409."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get('appointmentId') || '')) throw new Error('Set appointmentId to an existing appointment UUID.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Empty response', () => pm.expect(pm.response.text()).to.eql(''));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reject Appointment Again (409)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/reject-appointment/{{appointmentId}}",
+                "description": "Run the matching action successfully first, then repeat with the same appointmentId. Expect 409."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get('appointmentId') || '')) throw new Error('Set appointmentId to an existing appointment UUID.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Conflict explained', () => pm.expect(pm.response.json().detail).to.include('artık onay beklemiyor')); "
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
         }
       ]
     },

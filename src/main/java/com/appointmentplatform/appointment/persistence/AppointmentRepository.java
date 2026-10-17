@@ -2,13 +2,16 @@ package com.appointmentplatform.appointment.persistence;
 
 import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.AppointmentStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -41,4 +44,12 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
             @Param("startsAt") Instant startsAt,
             @Param("endsAt") Instant endsAt,
             @Param("statuses") List<AppointmentStatus> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+    SELECT a from Appointment a WHERE a.id = :id
+    """)
+    Optional<Appointment> findByIdForUpdate(
+            @Param("id") UUID id
+    );
 }

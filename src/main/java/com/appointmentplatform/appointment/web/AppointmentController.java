@@ -46,4 +46,20 @@ public class AppointmentController {
         return AppointmentCreationResponse.from(applicationService.createByBrand(brandId, request));
     }
 
+
+    @PostMapping("/approve-appointment/{appointmentId}")
+    public void approveAppointment(
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @PathVariable("appointmentId") UUID appointmentId
+    ){
+        applicationService.approveAppointment(brandId,appointmentId);
+    }
+
+    @PostMapping("/reject-appointment/{appointmentId}")
+    public void rejectAppointment(
+            @AuthenticationPrincipal(expression = "brandId") UUID brandId,
+            @PathVariable("appointmentId") UUID appointmentId
+    ){
+        applicationService.rejectAppointment(brandId,appointmentId);
+    }
 }

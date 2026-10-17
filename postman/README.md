@@ -122,3 +122,9 @@ Abonelik pasifse veya şube kabulü kapalıysa create 409 döner ve nedenini det
 3. `Create Appointment as Customer`: aynı telefon ve X-Phone-Verification header'ı gönderilir. Başarılı kayıtta token tüketilir; yeni randevu için yeniden doğrulama gerekir. Başarısız randevuda token süresi dolmadıysa yeniden denenebilir.
 
 Kod 2 dakika geçerlidir; 3 yanlış denemeden sonra kullanılamaz. Yeni kod için 60 saniye beklenir; son bir saat içinde en fazla 3 gönderim yapılır. 429 cevabındaki Retry-After bekleme süresidir. Doğrulama token'ı 5 dakika geçerlidir. Kod veya token başka telefonda kullanılamaz. Brand Creation OTP istemez. Gerçek SMS sağlayıcısı bağlı değildir; sadece dev profilinde log üzerinden denenir, prod profilinde gönderim 503 döner.
+
+## Randevu onaylama ve reddetme
+
+`Appointments → Approval and Rejection` altında `Approve Appointment` ve `Reject Appointment` var. Randevunun sahibi brand ile giriş yapıp CSRF yenile. `appointmentId` oluşturma cevabından otomatik alınır; body gönderilmez. Başarı 200 ve boş body döner.
+
+İki işlemi denemek için ayrı PENDING randevular kullan. Aynı ID ile `Again (409)` isteği durum değişikliğinin tekrar yapılamadığını kontrol eder. Başka brand'in randevusu veya bulunmayan ID 404 döner. REJECTED kayıt silinmez, saati serbest kalır. V19 migration uygulanmış olmalı. Güncel collection dosyasını yeniden import et.

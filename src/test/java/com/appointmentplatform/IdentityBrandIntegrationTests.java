@@ -23,6 +23,9 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -680,6 +683,87 @@ class IdentityBrandIntegrationTests {
         assertThat(appointments.findById(saved.getId())).isPresent();
         assertThat(appointments.findById(brandSaved.getId())).isPresent();
 
+    }
+
+    @Test
+    void appointmentDecisionsCheckOwnershipStatusAndConcurrentChanges() throws Exception {
+        String email = "decisions-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(email, "Decisions");
+        var owner = loginBrand(email);
+        String otherEmail = "other-decisions-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(otherEmail, "Other Decisions");
+        var other = loginBrand(otherEmail);
+        var anonymous = session();
+
+        var account = users.findByEmail(email).orElseThrow();
+        account.changeStatus(true, true, clock.instant());
+        users.saveAndFlush(account);
+        String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        assertThat(patch(owner, "/api/panel/branches/" + branchId + "/appointment-acceptance",
+                "{\"acceptingAppointments\":true}").statusCode()).isEqualTo(200);
+        String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
+                "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
+        assertThat(post(owner, "/api/panel/addService",
+                "{\"displayName\":\"Kesim\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
+        String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        assertThat(post(owner, "/api/panel/employee/assign",
+                "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
+        var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+        String base = "/api/panel/appointment/";
+
+        for (int scenario = 0; scenario < 3; scenario++) {
+            String body = """
+                    {"employeeId":"%s","serviceId":"%s","date":"%s","startTime":"10:00",
+                     "customerFirstName":"Ada","customerLastName":"Lovelace","customerPhone":"+905551112233"}
+                    """.formatted(employeeId, serviceId, date.plusWeeks(scenario));
+            var created = post(owner, base + "create", body);
+            assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+            UUID id = UUID.fromString(json.readTree(created.body()).get("id").asText());
+            String approve = base + "approve-appointment/" + id;
+            String reject = base + "reject-appointment/" + id;
+
+            for (String path : List.of(approve, reject)) {
+                assertThat(post(anonymous, path, "").statusCode()).isEqualTo(401);
+                assertThat(post(other, path, "").statusCode()).isEqualTo(404);
+            }
+            assertThat(appointments.findById(id).orElseThrow().getStatus()).isEqualTo(AppointmentStatus.PENDING);
+
+            if (scenario < 2) {
+                var response = post(owner, scenario == 0 ? approve : reject, "");
+                assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+                assertThat(response.body()).isEmpty();
+                assertThat(appointments.findById(id).orElseThrow().getStatus())
+                        .isEqualTo(scenario == 0 ? AppointmentStatus.APPROVED : AppointmentStatus.REJECTED);
+            } else {
+                var barrier = new CyclicBarrier(2);
+                try (var executor = Executors.newFixedThreadPool(2)) {
+                    var approval = executor.submit(() -> {
+                        barrier.await(10, TimeUnit.SECONDS);
+                        return post(owner, approve, "").statusCode();
+                    });
+                    var rejection = executor.submit(() -> {
+                        barrier.await(10, TimeUnit.SECONDS);
+                        return post(owner, reject, "").statusCode();
+                    });
+                    int approvalStatus = approval.get(20, TimeUnit.SECONDS);
+                    int rejectionStatus = rejection.get(20, TimeUnit.SECONDS);
+                    assertThat(List.of(approvalStatus, rejectionStatus)).containsExactlyInAnyOrder(200, 409);
+                    assertThat(appointments.findById(id).orElseThrow().getStatus())
+                            .isEqualTo(approvalStatus == 200 ? AppointmentStatus.APPROVED : AppointmentStatus.REJECTED);
+                }
+            }
+
+            for (String path : List.of(approve, reject)) {
+                var conflict = post(owner, path, "");
+                assertThat(conflict.statusCode()).as(conflict.body()).isEqualTo(409);
+                assertThat(conflict.body()).contains("artık onay beklemiyor");
+                assertThat(post(other, path, "").statusCode()).isEqualTo(404);
+            }
+        }
+        for (String action : List.of("approve-appointment/", "reject-appointment/")) {
+            assertThat(post(owner, base + action + UUID.randomUUID(), "").statusCode()).isEqualTo(404);
+        }
     }
 
     private void verifyPhone(TestSession session, String phone) throws Exception {

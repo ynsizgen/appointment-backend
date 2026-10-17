@@ -215,4 +215,34 @@ public class ApplicationService {
         return new AppointmentDetails(appointment.getId(),appointment.getBranchId(),appointment.getEmployeeId(), appointment.getServiceId(),appointment.getServiceName(), appointment.getDurationMinutes(),appointment.getStartsAt(),appointment.getEndsAt(),appointment.getStatus());
 
     }
+    @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public void approveAppointment(UUID brandId, UUID appointmentId) {
+
+        Appointment appointment = appointmentRepository.findByIdForUpdate(appointmentId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Randevu bulunamadı."));
+
+        branchOperations.requireOwnedBy(appointment.getBranchId(), brandId);
+
+        if (appointment.getStatus() != AppointmentStatus.PENDING) {
+            throw new ApiException(HttpStatus.CONFLICT, "Bu randevu artık onay beklemiyor.");
+        }
+
+        appointment.setStatus(AppointmentStatus.APPROVED);
+    }
+
+    @Transactional
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public void rejectAppointment(UUID brandId, UUID appointmentId) {
+        Appointment appointment = appointmentRepository.findByIdForUpdate(appointmentId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Randevu bulunamadı."));
+
+        branchOperations.requireOwnedBy(appointment.getBranchId(), brandId);
+
+        if (appointment.getStatus() != AppointmentStatus.PENDING) {
+            throw new ApiException(HttpStatus.CONFLICT, "Bu randevu artık onay beklemiyor.");
+        }
+
+        appointment.setStatus(AppointmentStatus.REJECTED);
+    }
 }

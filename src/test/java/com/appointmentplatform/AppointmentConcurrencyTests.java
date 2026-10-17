@@ -115,6 +115,27 @@ class AppointmentConcurrencyTests {
     }
 
     @Test
+    void rejectedAppointmentRemainsStoredButReleasesItsTimeRange() {
+        var fixture = fixture();
+        var original = appointments.saveAndFlush(booking(fixture, 0, 60, AppointmentStatus.PENDING));
+
+        original.setStatus(AppointmentStatus.REJECTED);
+        appointments.saveAndFlush(original);
+
+        assertThat(appointments.findBlockingInRange(
+                fixture.employee(),
+                original.getStartsAt(),
+                original.getEndsAt(),
+                List.of(AppointmentStatus.PENDING, AppointmentStatus.APPROVED))).isEmpty();
+
+        var replacement = appointments.saveAndFlush(booking(fixture, 0, 60, AppointmentStatus.PENDING));
+
+        assertThat(appointments.findById(original.getId()).orElseThrow().getStatus())
+                .isEqualTo(AppointmentStatus.REJECTED);
+        assertThat(appointments.findById(replacement.getId())).isPresent();
+    }
+
+    @Test
     void adjacentBookingsAndDifferentEmployeesAreAllowedButPartialOverlapIsNot() {
         var f = fixture();
         appointments.saveAndFlush(booking(f, 0, 60, AppointmentStatus.PENDING));
