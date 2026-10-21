@@ -46,6 +46,10 @@ public class Appointment {
     private Instant createdAt;
     @Column(nullable = false, updatable = false)
     private Instant cancellationDeadline;
+    @Column(unique = true, length = 64)
+    private String accessTokenHash;
+    @Column(nullable = false, updatable = false)
+    private Instant accessTokenExpiresAt;
 
 
     protected Appointment() {}
@@ -66,7 +70,9 @@ public class Appointment {
             AppointmentStatus status,
             AppointmentSource source,
             Instant createdAt,
-            Instant cancellationDeadline
+            Instant cancellationDeadline,
+            String accessTokenHash,
+            Instant accessTokenExpiresAt
     ) {
         this.id = id;
         this.branchId = branchId;
@@ -84,6 +90,8 @@ public class Appointment {
         this.source = source;
         this.createdAt = createdAt;
         this.cancellationDeadline = cancellationDeadline;
+        this.accessTokenHash = accessTokenHash;
+        this.accessTokenExpiresAt = accessTokenExpiresAt;
     }
 
     public UUID getId() {
@@ -208,5 +216,25 @@ public class Appointment {
 
     public Instant getCancellationDeadline() {
         return cancellationDeadline;
+    }
+
+    public void setCancellationDeadline(Instant cancellationDeadline) {
+        this.cancellationDeadline = cancellationDeadline;
+    }
+
+    public String getAccessTokenHash() {
+        return accessTokenHash;
+    }
+
+    public void setAccessTokenHash(String accessTokenHash) {
+        this.accessTokenHash = accessTokenHash;
+    }
+
+    public Instant getAccessTokenExpiresAt() {
+        return accessTokenExpiresAt;
+    }
+
+    public void setAccessTokenExpiresAt(Instant accessTokenExpiresAt) {
+        this.accessTokenExpiresAt = accessTokenExpiresAt;
     }
 }

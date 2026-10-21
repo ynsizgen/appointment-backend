@@ -15,4 +15,9 @@ public class DevSmsSender implements SmsSender {
     public void sendVerificationCode(String phone, String code) {
         log.info("DEV SMS — phone ending {} — verification code: {}", phone.substring(phone.length() - 4), code);
     }
+
+    @Override
+    public void sendMessage(String phone, String body) {
+        log.info("DEV SMS — phone ending {} — notificatioın: {}", phone.substring(phone.length() - 4), body);
+    }
 }

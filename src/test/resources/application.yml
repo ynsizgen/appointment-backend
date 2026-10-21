@@ -7,6 +7,8 @@ app:
   mail:
     worker-enabled: false
     from: no-reply@example.invalid
+  sms:
+    worker-enabled: false
   bootstrap:
     enabled: false
 server:

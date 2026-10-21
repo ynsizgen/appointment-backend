@@ -13,4 +13,9 @@ public class UnavailableSmsSender implements SmsSender {
     public void sendVerificationCode(String phone, String code) {
         throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SMS sağlayıcısı henüz yapılandırılmadı.");
     }
+
+    @Override
+    public void sendMessage(String phone, String body) {
+        throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "SMS sağlayıcısı henüz yapılandırılmadı.");
+    }
 }

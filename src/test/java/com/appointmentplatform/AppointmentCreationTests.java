@@ -4,6 +4,8 @@ import com.appointmentplatform.appointment.application.ApplicationService;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.notification.AppointmentSmsJobs;
+import com.appointmentplatform.shared.Crypto;
 import com.appointmentplatform.brand.BrandOperations;
 import com.appointmentplatform.identity.SubscriptionOperations;
 import com.appointmentplatform.identity.PhoneVerifications;
@@ -31,7 +33,9 @@ class AppointmentCreationTests {
     void setup() {
         // 10:00 in Istanbul: customer boundary is precisely 11:00.
         application = new ApplicationService(schedules, employees, services,
-                Clock.fixed(Instant.parse("2026-10-12T07:00:00Z"), ZoneOffset.UTC), repository, branches, mock(SubscriptionOperations.class), mock(PhoneVerifications.class), mock(BrandOperations.class));
+                Clock.fixed(Instant.parse("2026-10-12T07:00:00Z"), ZoneOffset.UTC), repository, branches, mock(SubscriptionOperations.class), mock(PhoneVerifications.class), mock(BrandOperations.class),
+                new Crypto("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+                mock(AppointmentSmsJobs.class), "http://localhost:8080");
         when(branches.brandId(branch)).thenReturn(brand);
         when(employees.branchId(employee)).thenReturn(branch);
         when(services.findById(service)).thenReturn(new ServiceDetails(service, brand, "Cut", 60));

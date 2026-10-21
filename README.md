@@ -175,3 +175,11 @@ Customer cancellation links and rejection/cancellation SMS remain pending. Cance
 `PATCH /api/panel/brand/cancellation-policy` accepts `{"cancellationNoticeHours":3}` for the authenticated BRAND. CSRF required. Integer hours 0–168; default 0 means until the appointment starts. Missing/null/out-of-range values return 400. The 200 response and GET `/api/panel/brand` include the setting. Postman: Brand → Update Cancellation Policy.
 
 Both brand and customer creation store and return `cancellationDeadline = startsAt - cancellationNoticeHours` as an Instant. Changing the policy affects only new bookings. V21 adds the setting and backfills existing bookings with their start time (initial zero-hour policy). Brand cancellation is not limited by this deadline. Customer token/link and deadline enforcement endpoint remain to be implemented; this change prepares the policy and snapshot only.
+
+## SMS job storage
+
+V22 adds notification-owned `sms_jobs` and `SmsJobRepository`. Jobs start PENDING with zero attempts; the pending index orders by nextAttemptAt, createdAt and id. Each appointment/type pair is unique to prevent duplicate scheduling. `encryptedBody` must receive encrypted content, never a plaintext token/link. The table stores creation, 24-hour/2-hour reminder, rejection and cancellation jobs; OTP continues through its existing flow.
+
+Appointment creation now enqueues an encrypted SMS in the same transaction. AppointmentSmsWorker selects one due PENDING job with FOR UPDATE SKIP LOCKED, decrypts and sends it, then records SENT. Creation/reminder messages retry once after 10 minutes; rejection/cancellation messages do not retry. The dev sender logs messages; a real provider is not configured. Reminder scheduling and rejection/cancellation enqueueing remain future work. A crash after provider delivery but before database commit can still cause a duplicate; the row lock protects concurrent selection, not exactly-once external delivery.
+
+V23 adds hashed appointment access tokens and expiry (30 days after appointment start). Existing appointments have no issued token. GET /api/public/appointment/details accepts X-Appointment-Token; the creation response does not expose the token. Customer cancellation is not implemented yet.

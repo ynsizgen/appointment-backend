@@ -3,6 +3,7 @@ package com.appointmentplatform.appointment.web;
 import com.appointmentplatform.appointment.application.ApplicationService;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreationResponse;
+import com.appointmentplatform.appointment.web.dto.CustomerAppointmentResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -28,5 +29,12 @@ public class PublicAppointmentController {
 
         return AppointmentCreationResponse.from(
                 applicationService.createByCustomer(branchId, request, verificationToken));
+    }
+
+    @GetMapping("/details")
+    public CustomerAppointmentResponse appointmentDetails(
+            @RequestHeader("X-Appointment-Token") String token
+    ) {
+        return CustomerAppointmentResponse.from(applicationService.appointmentDetails(token));
     }
 }

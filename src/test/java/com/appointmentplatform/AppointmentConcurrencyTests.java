@@ -1,6 +1,7 @@
 package com.appointmentplatform;
 
 import com.appointmentplatform.appointment.AppointmentSource;
+import com.appointmentplatform.shared.Crypto;
 import com.appointmentplatform.appointment.AppointmentStatus;
 import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
@@ -78,7 +79,9 @@ class AppointmentConcurrencyTests {
                 status,
                 AppointmentSource.CUSTOMER,
                 Instant.now(),
-                base.plusSeconds(startMinute * 60L));
+                base.plusSeconds(startMinute * 60L),
+                Crypto.hash(UUID.randomUUID().toString()),
+                base.plusSeconds(startMinute * 60L + 30L * 24 * 3600));
     }
 
     @Test

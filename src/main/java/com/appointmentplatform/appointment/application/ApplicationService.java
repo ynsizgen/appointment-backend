@@ -15,11 +15,15 @@ import com.appointmentplatform.identity.PhoneVerifications;
 import com.appointmentplatform.employee.EmployeeDailyScheduleDetails;
 import com.appointmentplatform.employee.EmployeeOperations;
 import com.appointmentplatform.employee.EmployeeScheduleOperations;
-import com.appointmentplatform.employee.EmployeeTimeIntervalDetails;
+import com.appointmentplatform.notification.AppointmentSmsJob;
+import com.appointmentplatform.notification.AppointmentSmsJobs;
+import com.appointmentplatform.notification.SmsJobType;
 import com.appointmentplatform.service.ServiceDetails;
 import com.appointmentplatform.service.ServiceOperations;
 import com.appointmentplatform.shared.ApiException;
+import com.appointmentplatform.shared.Crypto;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -41,6 +45,9 @@ public class ApplicationService {
     private final SubscriptionOperations subscriptions;
     private final PhoneVerifications phoneVerifications;
     private final BrandOperations brands;
+    private final Crypto crypto;
+    private final AppointmentSmsJobs appointmentSmsJobs;
+    private final String publicUrl;
 
     public ApplicationService(
             EmployeeScheduleOperations employeeScheduleOperations,
@@ -51,8 +58,10 @@ public class ApplicationService {
             BranchOperations branchOperations,
             SubscriptionOperations subscriptions,
             PhoneVerifications phoneVerifications,
-            BrandOperations brands
-    ) {
+            BrandOperations brands,
+            Crypto crypto,
+            AppointmentSmsJobs appointmentSmsJobs,
+            @Value("${app.public-url}") String publicUrl) {
         this.employeeScheduleOperations = employeeScheduleOperations;
         this.employeeOperations = employeeOperations;
         this.serviceOperations = serviceOperations;
@@ -62,6 +71,9 @@ public class ApplicationService {
         this.subscriptions = subscriptions;
         this.phoneVerifications = phoneVerifications;
         this.brands = brands;
+        this.crypto = crypto;
+        this.appointmentSmsJobs = appointmentSmsJobs;
+        this.publicUrl = publicUrl;
     }
 
 
@@ -135,7 +147,7 @@ public class ApplicationService {
             while (!startTime.plusMinutes(service.durationMinutes()).isAfter(endTime)) {
                 if(!startTime.isBefore(earliestStart))
                     slot.add(startTime.toLocalTime());
-               startTime= startTime.plusMinutes(service.durationMinutes());
+               startTime = startTime.plusMinutes(service.durationMinutes());
             }
 
         }
@@ -154,7 +166,6 @@ public class ApplicationService {
     @Transactional
     public AppointmentDetails createByCustomer(UUID branchId, @Valid AppointmentCreateRequest request, String verificationToken) {
         phoneVerifications.consume(request.customerPhone(), verificationToken);
-
         return create(branchOperations.brandId(branchId), branchId, request, AppointmentSource.CUSTOMER);
     }
 
@@ -222,6 +233,10 @@ public class ApplicationService {
 
         Instant cancellationDeadline = startAt.minus(Duration.ofHours(brands.cancellationNoticeHours(brandId)));
 
+        String accessToken= crypto.token();
+
+        Instant accessTokenExpiresAt = startAt.plus(Duration.ofDays(30));
+
         Appointment appointment = appointmentRepository.saveAndFlush(new Appointment(
                 UUID.randomUUID(),
                 branchId,
@@ -238,7 +253,14 @@ public class ApplicationService {
                 AppointmentStatus.PENDING,
                 source,
                 clock.instant(),
-                cancellationDeadline));
+                cancellationDeadline,
+                Crypto.hash(accessToken),
+                accessTokenExpiresAt
+                ));
+
+        appointmentSmsJobs.enqueue(new AppointmentSmsJob(appointment.getId(),
+                appointment.getCustomerPhone(),
+                "Randevunuz oluşturulmuştur." + publicUrl + "/randevu#token=" + accessToken, SmsJobType.APPOINTMENT_CREATED,clock.instant()));
 
         return new AppointmentDetails(
                 appointment.getId(),
@@ -250,7 +272,8 @@ public class ApplicationService {
                 appointment.getStartsAt(),
                 appointment.getEndsAt(),
                 appointment.getStatus(),
-                appointment.getCancellationDeadline());
+                appointment.getCancellationDeadline(),
+                appointment.getCustomerPhone());
 
     }
     @Transactional
@@ -297,5 +320,24 @@ public class ApplicationService {
         }
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
+    }
+
+    public CustomerAppointmentDetails appointmentDetails(String token) {
+       Appointment appointment = appointmentRepository.findAllByAccessTokenHash(Crypto.hash(token)).orElseThrow(()-> new ApiException(HttpStatus.NOT_FOUND,"Appointment bulunamadı."));
+
+       if (!appointment.getAccessTokenExpiresAt().isAfter(clock.instant())) {
+           throw new ApiException(HttpStatus.GONE, "Bağlantının süresi dolmuş.");
+       }
+
+       return new CustomerAppointmentDetails(
+               appointment.getServiceName(),
+               appointment.getDurationMinutes(),
+               appointment.getCustomerFirstName(),
+               appointment.getCustomerLastName(),
+               appointment.getCustomerPhone(),
+               appointment.getCustomerEmail(),
+               appointment.getStartsAt(),
+               appointment.getStatus(),
+               appointment.getAccessTokenExpiresAt());
     }
 }

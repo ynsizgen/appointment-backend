@@ -26,7 +26,12 @@ spring:
 app:
   public-url: ${PUBLIC_URL:http://localhost:8080}
   mail:
+    worker-enabled: ${MAIL_WORKER_ENABLED:true}
+    poll-delay: ${MAIL_POLL_DELAY:5000} # Milliseconds after each delivery run finishes
     from: ${MAIL_FROM:no-reply@localhost}
+  sms:
+    worker-enabled: ${SMS_WORKER_ENABLED:true}
+    poll-delay: ${SMS_POLL_DELAY:5000}
   security:
     encryption-key: ${APP_SECURITY_ENCRYPTION_KEY}
     session-max-age: 1H

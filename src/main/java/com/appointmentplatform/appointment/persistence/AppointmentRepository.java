@@ -52,4 +52,6 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     Optional<Appointment> findByIdForUpdate(
             @Param("id") UUID id
     );
+
+    Optional<Appointment> findAllByAccessTokenHash(String token);
 }

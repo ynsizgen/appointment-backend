@@ -15,5 +15,6 @@ public record AppointmentDetails(
         Instant startsAt,
         Instant endsAt,
         AppointmentStatus status,
-        Instant cancellationDeadline
+        Instant cancellationDeadline,
+        String customerPhone
 ) {}

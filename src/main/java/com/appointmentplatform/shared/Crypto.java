@@ -37,8 +37,11 @@ public class Crypto {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
     public static String hash(String value) {
-        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
-        catch (GeneralSecurityException e) { throw new IllegalStateException(e); }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
+        catch (GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
     public String encrypt(String plaintext) {
         try {

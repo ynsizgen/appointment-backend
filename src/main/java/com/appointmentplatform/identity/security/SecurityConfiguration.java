@@ -42,6 +42,7 @@ public class SecurityConfiguration {
             .requestMatchers(HttpMethod.GET,"/actuator/health","/api/auth/csrf","/verify-email","/verify-email.js","/reset-password","/reset-password.js").permitAll()
             .requestMatchers(HttpMethod.POST,"/api/auth/registrations","/api/auth/verify-email","/api/auth/login","/api/auth/forgot-brand-password","/api/auth/reset-brand-password").permitAll()
             .requestMatchers(HttpMethod.POST, "/api/public/appointment/create/*", "/api/public/phone-verifications/request", "/api/public/phone-verifications/verify").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/public/appointment/details").permitAll()
             .requestMatchers(HttpMethod.GET,"/api/auth/me").authenticated()
             .requestMatchers("/api/admin/**").hasRole("ADMIN")
             .requestMatchers("/api/panel/**").hasRole("BRAND")
