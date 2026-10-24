@@ -135,7 +135,7 @@ Postman: `Appointments → Appointment Actions`. POST panel endpoints: `/api/pan
 
 Approval/rejection require PENDING. Cancellation accepts PENDING or APPROVED and sets CANCELLED. Missing/foreign records return 404; invalid/repeated transitions return 409. A row lock serializes concurrent decisions. Cancelled/rejected records remain stored and no longer block time; retrying cancellation cannot affect a replacement booking. Cancellation does not require an active subscription or branch acceptance. V19 permits REJECTED and V20 permits CANCELLED; V17 still blocks only PENDING/APPROVED.
 
-Customer cancellation is implemented; brand rejection/cancellation SMS enqueueing remains pending. Cancellation cutoff snapshots are implemented in V21. Reimport the collection to see new requests.
+Customer cancellation and brand rejection/cancellation SMS enqueueing are implemented. Cancellation cutoff snapshots are implemented in V21. Reimport the collection to see new requests.
 
 ## Brand cancellation policy — 17 October 2026
 
@@ -152,3 +152,9 @@ Postman: `Appointments → Customer Access and Cancellation`. Set `appointmentAc
 - Cancellation locks the appointment by token hash. Expired access token returns 410; status other than PENDING/APPROVED or reaching the stored cancellation deadline returns 409; unknown token returns 404. Equality with the deadline is rejected.
 - Cancellation stores CANCELLED and one encrypted APPOINTMENT_CANCELLED SMS job atomically; an enqueue failure rolls back cancellation. Repeated/concurrent cancellation cannot enqueue a second SMS. Cancelled bookings no longer block time. Cancellation SMS is not automatically retried.
 - Manual flow: Get Details → Cancel Appointment as Customer → Cancel Again (409). Get Details again shows CANCELLED while the access token is valid. New collection requests require reimporting the JSON file.
+
+### Brand decision SMS — 24 October 2026
+
+Brand rejection and cancellation enqueue APPOINTMENT_REJECTED / APPOINTMENT_CANCELLED in the same transaction as the status change. Failed queue persistence rolls back both changes. Repeated/invalid decisions return 409 without another SMS; foreign appointments return 404. Concurrent decisions produce only the winning decision's SMS. Delivery failure has no automatic retry for these message types.
+
+In Postman, use Appointments → Appointment Actions. Test Reject Appointment → Reject Appointment Again (409) on one PENDING booking, then Cancel Appointment → Cancel Appointment Again (409) on a separate PENDING or APPROVED booking. Keep appointmentId unchanged for each repeat. HTTP checks verify responses; database-backed integration tests verify encrypted SMS persistence, transaction rollback and concurrency. A 200 response does not mean the SMS provider has delivered the message.

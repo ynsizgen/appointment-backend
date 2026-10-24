@@ -1955,7 +1955,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/api/panel/appointment/reject-appointment/{{appointmentId}}",
-                "description": "Login as the owning BRAND and refresh CSRF. Set appointmentId to a PENDING appointment (creation saves it automatically). No body. Success returns 200 with an empty body. Approve and Reject require separate PENDING appointments. Missing or another brand’s appointment returns 404. A non-PENDING appointment returns 409."
+                "description": "Login as the owning BRAND and refresh CSRF. Set appointmentId to a PENDING appointment (creation saves it automatically). No body. Success returns 200 with an empty body. Approve and Reject require separate PENDING appointments. Missing or another brand’s appointment returns 404. A non-PENDING appointment returns 409. The status change and one encrypted SMS job commit together. The existing worker sends the message; a 200 response confirms the transaction, not provider delivery. This message is not retried on delivery failure. Check sms_jobs for this appointmentId or the DEV SMS log; no SMS inspection API exists."
               },
               "event": [
                 {
@@ -1991,7 +1991,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/api/panel/appointment/reject-appointment/{{appointmentId}}",
-                "description": "Run the matching action successfully first, then repeat with the same appointmentId. Expect 409."
+                "description": "Run the matching action successfully first, then repeat with the same appointmentId. Expect 409. No additional SMS job should be created for this rejected repeat."
               },
               "event": [
                 {
@@ -2027,7 +2027,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/api/panel/appointment/cancel-appointment/{{appointmentId}}",
-                "description": "Owning BRAND session and CSRF required. No body. PENDING or APPROVED becomes CANCELLED; record remains and time is released. Success: 200, empty body. REJECTED/already CANCELLED: 409. Missing/foreign ID: 404. Run Again only after a successful cancellation with the same appointmentId."
+                "description": "Owning BRAND session and CSRF required. No body. PENDING or APPROVED becomes CANCELLED; record remains and time is released. Success: 200, empty body. REJECTED/already CANCELLED: 409. Missing/foreign ID: 404. Run Again only after a successful cancellation with the same appointmentId. The status change and one encrypted SMS job commit together. The existing worker sends the message; a 200 response confirms the transaction, not provider delivery. This message is not retried on delivery failure. Check sms_jobs for this appointmentId or the DEV SMS log; no SMS inspection API exists."
               },
               "event": [
                 {
@@ -2063,7 +2063,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/api/panel/appointment/cancel-appointment/{{appointmentId}}",
-                "description": "Owning BRAND session and CSRF required. No body. PENDING or APPROVED becomes CANCELLED; record remains and time is released. Success: 200, empty body. REJECTED/already CANCELLED: 409. Missing/foreign ID: 404. Run Again only after a successful cancellation with the same appointmentId."
+                "description": "Run Cancel Appointment successfully first, then repeat with the SAME appointmentId. Expected: 409, unchanged CANCELLED status and no additional SMS job."
               },
               "event": [
                 {

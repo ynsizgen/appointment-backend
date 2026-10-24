@@ -2,6 +2,7 @@ package com.appointmentplatform.notification.application;
 
 import com.appointmentplatform.notification.AppointmentSmsJob;
 import com.appointmentplatform.notification.AppointmentSmsJobs;
+import com.appointmentplatform.notification.SmsJobType;
 import com.appointmentplatform.notification.domain.SmsJob;
 import com.appointmentplatform.notification.domain.SmsJobStatus;
 import com.appointmentplatform.notification.persistence.SmsJobRepository;

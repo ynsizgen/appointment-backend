@@ -305,6 +305,14 @@ public class ApplicationService {
         }
 
         appointment.setStatus(AppointmentStatus.REJECTED);
+
+        appointmentSmsJobs.enqueue(new AppointmentSmsJob(
+                appointment.getId(),
+                appointment.getCustomerPhone(),
+                "Randevu talebiniz işletme tarafından reddedilmiştir.",
+                SmsJobType.APPOINTMENT_REJECTED,
+                clock.instant())
+        );
     }
     @Transactional
     @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
@@ -320,6 +328,14 @@ public class ApplicationService {
         }
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
+
+        appointmentSmsJobs.enqueue(new AppointmentSmsJob(
+                appointment.getId(),
+                appointment.getCustomerPhone(),
+                        "Randevunuz işletme tarafından iptal edilmiştir.",
+                SmsJobType.APPOINTMENT_CANCELLED,
+                clock.instant())
+                );
     }
 
     public CustomerAppointmentDetails appointmentDetails(String token) {
@@ -360,10 +376,12 @@ public class ApplicationService {
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
 
-        appointmentSmsJobs.enqueue(new AppointmentSmsJob(appointment.getId(),
-                                                appointment.getCustomerPhone(),
-                                        "Randevu iptal edilmiştir.",
-                                                SmsJobType.APPOINTMENT_CANCELLED,clock.instant())
+        appointmentSmsJobs.enqueue(new AppointmentSmsJob(
+                appointment.getId(),
+                appointment.getCustomerPhone(),
+                "Randevu iptal edilmiştir.",
+                SmsJobType.APPOINTMENT_CANCELLED,
+                clock.instant())
         );
     }
 }
