@@ -30,11 +30,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.*;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 @Transactional(readOnly = true)
-public class ApplicationService {
+public class ApplicationService{
 
     private final EmployeeScheduleOperations employeeScheduleOperations;
     private final EmployeeOperations employeeOperations;
@@ -262,6 +263,37 @@ public class ApplicationService {
                 appointment.getCustomerPhone(),
                 "Randevunuz oluşturulmuştur." + publicUrl + "/randevu#token=" + accessToken, SmsJobType.APPOINTMENT_CREATED,clock.instant()));
 
+        Instant startDate = appointment.getStartsAt();
+
+        String reminderMessage = "Hatırlatma: Randevunuz "
+                + startDate.atZone(ZoneId.of("Europe/Istanbul"))
+                        .format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))
+                + " tarihinde.";
+
+        Instant time2 = startDate.minus(Duration.ofHours(2));
+        Instant time24 = startDate.minus(Duration.ofHours(24));
+
+        if(!clock.instant().isAfter(time2)) {
+            appointmentSmsJobs.enqueue(new AppointmentSmsJob(
+                    appointment.getId(),
+                    appointment.getCustomerPhone(),
+                    reminderMessage,
+                    SmsJobType.REMINDER_2_HOURS,
+                    time2)
+            );
+        }
+
+        if(!clock.instant().isAfter(time24)){
+            appointmentSmsJobs.enqueue(new AppointmentSmsJob(
+                    appointment.getId(),
+                    appointment.getCustomerPhone(),
+                    reminderMessage,
+                    SmsJobType.REMINDER_24_HOURS,
+                    time24)
+            );
+        }
+
+
         return new AppointmentDetails(
                 appointment.getId(),
                 appointment.getBranchId(),
@@ -384,4 +416,6 @@ public class ApplicationService {
                 clock.instant())
         );
     }
+
+
 }

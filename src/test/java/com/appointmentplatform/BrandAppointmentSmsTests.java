@@ -18,7 +18,6 @@ import com.appointmentplatform.service.persistence.ServicesRepository;
 import com.appointmentplatform.shared.Crypto;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -31,12 +30,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.util.AopTestUtils;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 import com.appointmentplatform.appointment.application.ApplicationService;
 import com.appointmentplatform.identity.security.AccountPrincipal;
@@ -52,7 +49,7 @@ import static org.mockito.Mockito.doAnswer;
 
 import com.appointmentplatform.notification.domain.SmsJob;
 
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, FixedAppointmentClockConfiguration.class})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class BrandAppointmentSmsTests {
     private static final Instant NOW = Instant.parse("2030-01-01T10:00:00Z");
@@ -72,7 +69,7 @@ class BrandAppointmentSmsTests {
     Crypto crypto;
     @Autowired
     ApplicationService application;
-    @MockitoBean
+    @Autowired
     Clock clock;
     @MockitoSpyBean
     NotificationSmsService notification;
@@ -81,8 +78,6 @@ class BrandAppointmentSmsTests {
 
     @BeforeEach
     void setup() {
-        when(clock.instant()).thenReturn(NOW);
-        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
     }
 
     @AfterEach

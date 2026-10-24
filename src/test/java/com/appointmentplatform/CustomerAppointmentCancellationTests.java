@@ -23,7 +23,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
@@ -38,16 +37,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.util.AopTestUtils;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.when;
 
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, FixedAppointmentClockConfiguration.class})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class CustomerAppointmentCancellationTests {
     private static final Instant NOW = Instant.parse("2030-01-01T10:00:00Z");
@@ -70,7 +67,7 @@ class CustomerAppointmentCancellationTests {
     Crypto crypto;
     @Autowired
     ObjectMapper json;
-    @MockitoBean
+    @Autowired
     Clock clock;
     @MockitoSpyBean
     NotificationSmsService notification;
@@ -83,8 +80,6 @@ class CustomerAppointmentCancellationTests {
 
     @BeforeEach
     void setup() throws Exception {
-        when(clock.instant()).thenReturn(NOW);
-        when(clock.getZone()).thenReturn(ZoneOffset.UTC);
         client = HttpClient.newBuilder().cookieHandler(new CookieManager()).build();
         var response = client.send(HttpRequest.newBuilder(uri("/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(200);

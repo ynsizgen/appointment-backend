@@ -1,6 +1,7 @@
 package com.appointmentplatform.notification.application;
 
 import com.appointmentplatform.audit.Audit;
+import com.appointmentplatform.notification.AppointmentReminderEligibility;
 import com.appointmentplatform.notification.SmsJobType;
 import com.appointmentplatform.notification.SmsSender;
 import com.appointmentplatform.notification.domain.SmsJob;
@@ -10,7 +11,6 @@ import com.appointmentplatform.shared.Crypto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,15 +27,18 @@ public class AppointmentSmsWorker {
     private final SmsSender smsSender;
     private final Crypto crypto;
     private final Audit audit;
+    private final AppointmentReminderEligibility appointmentReminderEligibility;
+
     private Clock clock;
 
     private static final Logger log = LoggerFactory.getLogger(AppointmentSmsWorker.class);
 
-    public AppointmentSmsWorker(SmsJobRepository smsJobRepository, SmsSender smsSender, Crypto crypto, Audit audit, Clock clock) {
+    public AppointmentSmsWorker(SmsJobRepository smsJobRepository, SmsSender smsSender, Crypto crypto, Audit audit, AppointmentReminderEligibility appointmentReminderEligibility, Clock clock) {
         this.smsJobRepository = smsJobRepository;
         this.smsSender = smsSender;
         this.crypto = crypto;
         this.audit = audit;
+        this.appointmentReminderEligibility = appointmentReminderEligibility;
         this.clock = clock;
     }
 
@@ -44,12 +47,21 @@ public class AppointmentSmsWorker {
     void delivery(){
         Optional<SmsJob> smsJob = smsJobRepository.findNextDue("PENDING", clock.instant());
 
+
         if (smsJob.isEmpty()) {
             return;
         }
         SmsJob job = smsJob.get();
-        try{
 
+        boolean reminder = (job.type() == SmsJobType.REMINDER_24_HOURS
+                || job.type() == SmsJobType.REMINDER_2_HOURS);
+
+        if(reminder && !appointmentReminderEligibility.canSendReminder(job.appointmentId())){
+            job.markSkipped(clock.instant());
+            return;
+        }
+
+        try{
             smsSender.sendMessage(job.recipient(),crypto.decrypt(job.encryptedBody()));
             job.markSent(clock.instant());
 

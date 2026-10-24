@@ -5,6 +5,11 @@ import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.branch.BranchOperations;
 import com.appointmentplatform.notification.AppointmentSmsJobs;
+import com.appointmentplatform.notification.AppointmentSmsJob;
+import com.appointmentplatform.notification.SmsJobType;
+import org.mockito.ArgumentCaptor;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import com.appointmentplatform.shared.Crypto;
 import com.appointmentplatform.brand.BrandOperations;
 import com.appointmentplatform.identity.SubscriptionOperations;
@@ -13,6 +18,7 @@ import com.appointmentplatform.employee.*;
 import com.appointmentplatform.service.*;
 import com.appointmentplatform.shared.ApiException;
 import java.time.*;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +33,7 @@ class AppointmentCreationTests {
     final BranchOperations branches = mock(BranchOperations.class);
     final AppointmentRepository repository = mock(AppointmentRepository.class);
     final LocalDate date = LocalDate.of(2026, 10, 12);
+    final AppointmentSmsJobs smsJobs = mock(AppointmentSmsJobs.class);
     ApplicationService application;
 
     @BeforeEach
@@ -35,7 +42,7 @@ class AppointmentCreationTests {
         application = new ApplicationService(schedules, employees, services,
                 Clock.fixed(Instant.parse("2026-10-12T07:00:00Z"), ZoneOffset.UTC), repository, branches, mock(SubscriptionOperations.class), mock(PhoneVerifications.class), mock(BrandOperations.class),
                 new Crypto("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
-                mock(AppointmentSmsJobs.class), "http://localhost:8080");
+                smsJobs, "http://localhost:8080");
         when(branches.brandId(branch)).thenReturn(brand);
         when(employees.branchId(employee)).thenReturn(branch);
         when(services.findById(service)).thenReturn(new ServiceDetails(service, brand, "Cut", 60));
@@ -62,6 +69,30 @@ class AppointmentCreationTests {
                 .isInstanceOf(ApiException.class).hasMessageContaining("çalışma saatlerinin");
         verify(repository, never()).saveAndFlush(any());
     }
+    @ParameterizedTest
+    @CsvSource({"0,11:00,0", "0,12:00,1", "1,09:00,1", "1,10:00,2", "2,10:00,2"})
+    void schedulesOnlyDueOrFutureRemindersWithIstanbulDateAndTime(int days, LocalTime start, int reminders) {
+        LocalDate bookingDate = date.plusDays(days);
+        var intervals = List.of(new EmployeeTimeIntervalDetails(LocalTime.of(8, 0), LocalTime.of(20, 0)));
+        when(schedules.daily(brand, employee, bookingDate)).thenReturn(
+                new EmployeeDailyScheduleDetails(bookingDate, "BRANCH", true, intervals, intervals));
+        var request = new AppointmentCreateRequest(employee, service, bookingDate, start,
+                "Ada", "Lovelace", "+905551112233", null);
+        var appointment = application.createByBrand(brand, request);
+        var captor = ArgumentCaptor.forClass(AppointmentSmsJob.class);
+        verify(smsJobs, times(reminders + 1)).enqueue(captor.capture());
+        var scheduled = captor.getAllValues().stream()
+                .filter(job -> job.type() != SmsJobType.APPOINTMENT_CREATED).toList();
+        assertThat(scheduled).hasSize(reminders);
+        for (var job : scheduled) {
+            int hours = job.type() == SmsJobType.REMINDER_2_HOURS ? 2 : 24;
+            assertThat(job.nextAttemptAt()).isEqualTo(appointment.startsAt().minus(Duration.ofHours(hours)));
+            assertThat(job.nextAttemptAt()).isAfterOrEqualTo(Instant.parse("2026-10-12T07:00:00Z"));
+            assertThat(job.body()).contains(bookingDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")), start.toString());
+            assertThat(job.body()).doesNotContain("saat kaldı");
+        }
+    }
+
     private AppointmentCreateRequest request(LocalTime start) {
         return new AppointmentCreateRequest(employee, service, date, start, "Ada", "Lovelace", "+905551112233", null);
     }

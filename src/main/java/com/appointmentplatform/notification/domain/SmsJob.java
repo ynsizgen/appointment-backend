@@ -84,6 +84,12 @@ public class SmsJob {
         this.encryptedBody = null;
     }
 
+    public void markSkipped(Instant now) {
+        this.status = SmsJobStatus.SKIPPED;
+        this.completedAt = now;
+        this.encryptedBody = null;
+    }
+
 
     public UUID id() {
         return id;

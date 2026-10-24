@@ -1,6 +1,7 @@
 package com.appointmentplatform.notification;
 
-public interface AppointmentSmsJobs {
+import java.util.UUID;
 
+public interface AppointmentSmsJobs {
     void enqueue(AppointmentSmsJob appointmentSmsJob);
 }

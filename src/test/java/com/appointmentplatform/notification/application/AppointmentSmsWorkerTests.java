@@ -1,6 +1,8 @@
 package com.appointmentplatform.notification.application;
 
 import com.appointmentplatform.audit.Audit;
+import com.appointmentplatform.notification.AppointmentReminderEligibility;
+import org.junit.jupiter.api.BeforeEach;
 import com.appointmentplatform.notification.SmsJobType;
 import com.appointmentplatform.notification.SmsSender;
 import com.appointmentplatform.notification.domain.SmsJob;
@@ -27,10 +29,17 @@ class AppointmentSmsWorkerTests {
     private final Audit audit = mock(Audit.class);
     private final Crypto crypto = new Crypto("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
 
+    private final AppointmentReminderEligibility eligibility = mock(AppointmentReminderEligibility.class);
+
+    @BeforeEach
+    void allowReminders() {
+        when(eligibility.canSendReminder(any())).thenReturn(true);
+    }
+
     private AppointmentSmsWorker worker(Instant time, SmsJob job) {
         when(repository.findNextDue(SmsJobStatus.PENDING.name(), time))
                 .thenReturn(Optional.ofNullable(job));
-        return new AppointmentSmsWorker(repository, sender, crypto, audit, Clock.fixed(time, ZoneOffset.UTC));
+        return new AppointmentSmsWorker(repository, sender, crypto, audit, eligibility, Clock.fixed(time, ZoneOffset.UTC));
     }
 
     private SmsJob job(SmsJobType type) {
@@ -100,5 +109,50 @@ class AppointmentSmsWorkerTests {
         assertThat(job.status()).isEqualTo(SmsJobStatus.SENT);
         assertThat(job.attemptCount()).isEqualTo(2);
         assertThat(job.completedAt()).isEqualTo(retryAt);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SmsJobType.class, names = {"REMINDER_24_HOURS", "REMINDER_2_HOURS"})
+    void ineligibleReminderIsSkippedWithoutSending(SmsJobType type) {
+        var job = job(type);
+        when(eligibility.canSendReminder(job.appointmentId())).thenReturn(false);
+        worker(now, job).delivery();
+        assertThat(job.status()).isEqualTo(SmsJobStatus.SKIPPED);
+        assertThat(job.completedAt()).isEqualTo(now);
+        assertThat(job.encryptedBody()).isNull();
+        assertThat(job.attemptCount()).isZero();
+        verifyNoInteractions(sender, audit);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SmsJobType.class, names = {"REMINDER_24_HOURS", "REMINDER_2_HOURS"})
+    void retryRechecksEligibilityAndDoesNotSendAfterCancellation(SmsJobType type) {
+        var job = job(type);
+        doThrow(new IllegalStateException("Provider unavailable"))
+                .when(sender).sendMessage(anyString(), anyString());
+        worker(now, job).delivery();
+        when(eligibility.canSendReminder(job.appointmentId())).thenReturn(false);
+        worker(job.nextAttemptAt(), job).delivery();
+        assertThat(job.status()).isEqualTo(SmsJobStatus.SKIPPED);
+        assertThat(job.attemptCount()).isEqualTo(1);
+        verify(sender, times(1)).sendMessage(anyString(), anyString());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SmsJobType.class, names = {"APPOINTMENT_CREATED", "APPOINTMENT_REJECTED", "APPOINTMENT_CANCELLED"})
+    void nonReminderMessagesDoNotCheckAppointmentEligibility(SmsJobType type) {
+        var job = job(type);
+        when(eligibility.canSendReminder(any())).thenReturn(false);
+        worker(now, job).delivery();
+        assertThat(job.status()).isEqualTo(SmsJobStatus.SENT);
+        verifyNoInteractions(eligibility);
+    }
+
+    @Test
+    void delayedReminderStillSendsWhenAppointmentIsEligible() {
+        var job = job(SmsJobType.REMINDER_2_HOURS);
+        worker(now.plusSeconds(3600), job).delivery();
+        assertThat(job.status()).isEqualTo(SmsJobStatus.SENT);
+        verify(sender).sendMessage(job.recipient(), "Test appointment message");
     }
 }

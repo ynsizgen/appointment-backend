@@ -51,6 +51,9 @@ class SmsJobPersistenceTests {
         var sent = job(now.minusSeconds(200));
         sent.markSent(now);
         repository.saveAndFlush(sent);
+        var skipped = job(now.minusSeconds(150));
+        skipped.markSkipped(now);
+        repository.saveAndFlush(skipped);
         var first = repository.saveAndFlush(job(now.minusSeconds(100)));
         var boundary = repository.saveAndFlush(job(now));
         var future = repository.saveAndFlush(job(now.plusSeconds(601)));
