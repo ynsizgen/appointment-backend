@@ -54,4 +54,13 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     );
 
     Optional<Appointment> findAllByAccessTokenHash(String token);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+    SELECT a FROM Appointment a
+    WHERE a.accessTokenHash = :tokenHash
+    """)
+    Optional<Appointment> findByAccessTokenHashForUpdate(
+            @Param("tokenHash") String tokenHash
+    );
 }

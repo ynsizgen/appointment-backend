@@ -340,4 +340,30 @@ public class ApplicationService {
                appointment.getStatus(),
                appointment.getAccessTokenExpiresAt());
     }
+
+    @Transactional
+    public void cancelAppointmentByCustomer(String token) {
+        Appointment appointment = appointmentRepository.findByAccessTokenHashForUpdate(Crypto.hash(token))
+                .orElseThrow(()-> new ApiException(HttpStatus.NOT_FOUND,"Appointment bulunamadı."));
+
+
+        if(!appointment.getAccessTokenExpiresAt().isAfter(clock.instant())){
+            throw new ApiException(HttpStatus.GONE,"Appointment token süresi dolmuş.");
+        }
+        if (appointment.getStatus() != AppointmentStatus.PENDING && appointment.getStatus() != AppointmentStatus.APPROVED) {
+            throw new ApiException(HttpStatus.CONFLICT, "Yalnızca bekleyen veya onaylı randevular iptal edilebilir.");
+        }
+        if(!appointment.getCancellationDeadline().isAfter(clock.instant())){
+            throw new ApiException(HttpStatus.CONFLICT,"Randevunun iptal süresi dolmuş.");
+        }
+
+
+        appointment.setStatus(AppointmentStatus.CANCELLED);
+
+        appointmentSmsJobs.enqueue(new AppointmentSmsJob(appointment.getId(),
+                                                appointment.getCustomerPhone(),
+                                        "Randevu iptal edilmiştir.",
+                                                SmsJobType.APPOINTMENT_CANCELLED,clock.instant())
+        );
+    }
 }

@@ -135,10 +135,20 @@ Postman: `Appointments → Appointment Actions`. POST panel endpoints: `/api/pan
 
 Approval/rejection require PENDING. Cancellation accepts PENDING or APPROVED and sets CANCELLED. Missing/foreign records return 404; invalid/repeated transitions return 409. A row lock serializes concurrent decisions. Cancelled/rejected records remain stored and no longer block time; retrying cancellation cannot affect a replacement booking. Cancellation does not require an active subscription or branch acceptance. V19 permits REJECTED and V20 permits CANCELLED; V17 still blocks only PENDING/APPROVED.
 
-Customer cancellation links and rejection/cancellation SMS remain pending. Cancellation cutoff snapshots are implemented in V21. Reimport the collection to see new requests.
+Customer cancellation is implemented; brand rejection/cancellation SMS enqueueing remains pending. Cancellation cutoff snapshots are implemented in V21. Reimport the collection to see new requests.
 
 ## Brand cancellation policy — 17 October 2026
 
 `PATCH /api/panel/brand/cancellation-policy` accepts `{"cancellationNoticeHours":3}` for the authenticated BRAND. CSRF required. Integer hours 0–168; default 0 means until the appointment starts. Missing/null/out-of-range values return 400. The 200 response and GET `/api/panel/brand` include the setting. Postman: Brand → Update Cancellation Policy.
 
-Both brand and customer creation store and return `cancellationDeadline = startsAt - cancellationNoticeHours` as an Instant. Changing the policy affects only new bookings. V21 adds the setting and backfills existing bookings with their start time (initial zero-hour policy). Brand cancellation is not limited by this deadline. Customer token/link and deadline enforcement endpoint remain to be implemented; this change prepares the policy and snapshot only.
+Both brand and customer creation store and return `cancellationDeadline = startsAt - cancellationNoticeHours` as an Instant. Changing the policy affects only new bookings. V21 adds the setting and backfills existing bookings with their start time (initial zero-hour policy). Brand cancellation is not limited by this deadline. Customer token access and deadline enforcement are implemented as described below.
+
+## Customer access and cancellation — 22 October 2026
+
+Postman: `Appointments → Customer Access and Cancellation`. Set `appointmentAccessToken` to the raw token from the SMS link (dev: message in DEV SMS logs). It is not the OTP proof or token hash.
+
+- GET `/api/public/appointment/details` with `X-Appointment-Token` displays details without changing the booking.
+- POST `/api/public/appointment/cancel-appointment` with the same header and a valid CSRF cookie/header cancels without login or body.
+- Cancellation locks the appointment by token hash. Expired access token returns 410; status other than PENDING/APPROVED or reaching the stored cancellation deadline returns 409; unknown token returns 404. Equality with the deadline is rejected.
+- Cancellation stores CANCELLED and one encrypted APPOINTMENT_CANCELLED SMS job atomically; an enqueue failure rolls back cancellation. Repeated/concurrent cancellation cannot enqueue a second SMS. Cancelled bookings no longer block time. Cancellation SMS is not automatically retried.
+- Manual flow: Get Details → Cancel Appointment as Customer → Cancel Again (409). Get Details again shows CANCELLED while the access token is valid. New collection requests require reimporting the JSON file.

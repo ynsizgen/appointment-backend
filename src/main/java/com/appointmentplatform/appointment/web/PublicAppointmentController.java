@@ -37,4 +37,11 @@ public class PublicAppointmentController {
     ) {
         return CustomerAppointmentResponse.from(applicationService.appointmentDetails(token));
     }
+
+    @PostMapping("/cancel-appointment")
+    public void cancelAppointmentByCustomer(
+            @RequestHeader("X-Appointment-Token") String token
+    ) {
+        applicationService.cancelAppointmentByCustomer(token);
+    }
 }

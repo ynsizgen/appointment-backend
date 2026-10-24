@@ -108,6 +108,11 @@
       "key": "phoneVerificationToken",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "appointmentAccessToken",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -2077,6 +2082,132 @@
                     "exec": [
                       "pm.test('Status is 409', () => pm.response.to.have.status(409));",
                       "pm.test('Conflict explained', () => pm.expect(pm.response.json().detail).to.include('iptal edilebilir'));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Customer Access and Cancellation",
+          "description": "Use the raw appointment token from the SMS link. GET only displays; POST cancels. Repeated cancellation must return 409 without another SMS. For anonymous checks logout and refresh CSRF first. Deadline equality is rejected; cancellation must occur strictly before the stored deadline.",
+          "item": [
+            {
+              "name": "Get Appointment Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Appointment-Token",
+                    "value": "{{appointmentAccessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/details",
+                "description": "No login needed. Set appointmentAccessToken from the token= value in the appointment SMS link (dev: DEV SMS log after worker delivery). Do not use the phoneVerificationToken, CSRF token, or database hash. Creation does not return the appointment token. "
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "if (pm.response.code === 200) pm.test('Appointment details without credentials', () => { const a = pm.response.json(); pm.expect(a.serviceName).to.be.a('string'); pm.expect(a.status).to.be.a('string'); pm.expect(a).not.to.have.property('accessToken'); pm.expect(a).not.to.have.property('accessTokenHash'); });"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cancel Appointment as Customer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Appointment-Token",
+                    "value": "{{appointmentAccessToken}}"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/cancel-appointment",
+                "description": "No login needed. Set appointmentAccessToken from the token= value in the appointment SMS link (dev: DEV SMS log after worker delivery). Do not use the phoneVerificationToken, CSRF token, or database hash. Creation does not return the appointment token. Get /api/auth/csrf first and retain its cookie. No request body. Only PENDING/APPROVED appointments before cancellationDeadline can be cancelled. Expired link: 410; expired cancellation deadline or invalid status: 409; unknown token: 404. Success persists CANCELLED and queues one cancellation SMS. "
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "pm.test('Empty response', () => pm.expect(pm.response.text()).to.eql(''));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cancel Again (409)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Appointment-Token",
+                    "value": "{{appointmentAccessToken}}"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/cancel-appointment",
+                "description": "No login needed. Set appointmentAccessToken from the token= value in the appointment SMS link (dev: DEV SMS log after worker delivery). Do not use the phoneVerificationToken, CSRF token, or database hash. Creation does not return the appointment token. Get /api/auth/csrf first and retain its cookie. No request body. Only PENDING/APPROVED appointments before cancellationDeadline can be cancelled. Expired link: 410; expired cancellation deadline or invalid status: 409; unknown token: 404. Success persists CANCELLED and queues one cancellation SMS. Run the successful cancellation first with the same token. "
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                      "pm.test('Reason provided', () => pm.expect(pm.response.json().detail).to.be.a('string').and.not.empty);"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Invalid Token (404)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-Appointment-Token",
+                    "value": "invalid-test-token"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/cancel-appointment",
+                "description": "No login needed. Set appointmentAccessToken from the token= value in the appointment SMS link (dev: DEV SMS log after worker delivery). Do not use the phoneVerificationToken, CSRF token, or database hash. Creation does not return the appointment token. Get /api/auth/csrf first and retain its cookie. No request body. Only PENDING/APPROVED appointments before cancellationDeadline can be cancelled. Expired link: 410; expired cancellation deadline or invalid status: 409; unknown token: 404. Success persists CANCELLED and queues one cancellation SMS. Intentionally uses an invalid token; still requires valid CSRF. "
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                      "pm.test('Reason provided', () => pm.expect(pm.response.json().detail).to.be.a('string').and.not.empty);"
                     ]
                   }
                 }
