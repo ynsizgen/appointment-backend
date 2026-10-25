@@ -63,4 +63,19 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     Optional<Appointment> findByAccessTokenHashForUpdate(
             @Param("tokenHash") String tokenHash
     );
+
+    @Query("""
+    SELECT a
+    FROM Appointment a
+    where a.branchId=:branchId
+    and a.startsAt >= :rangeStart
+    and a.startsAt < :rangeEnd
+    order by a.startsAt,a.id
+    """)
+    List<Appointment> findByBranchIdAndDate(
+            @Param("branchId") UUID branchId,
+            @Param("rangeStart") Instant rangeStart,
+            @Param("rangeEnd") Instant rangeEnd
+            );
+
 }

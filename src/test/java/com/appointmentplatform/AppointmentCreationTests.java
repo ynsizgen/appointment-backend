@@ -1,6 +1,7 @@
 package com.appointmentplatform;
 
 import com.appointmentplatform.appointment.application.ApplicationService;
+import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
 import com.appointmentplatform.branch.BranchOperations;
@@ -91,6 +92,22 @@ class AppointmentCreationTests {
             assertThat(job.body()).contains(bookingDate.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")), start.toString());
             assertThat(job.body()).doesNotContain("saat kaldı");
         }
+    }
+
+    @Test
+    void dailyListingKeepsAppointmentWhenEmployeeIsMissing() {
+        var appointment = mock(Appointment.class);
+        UUID appointmentId = UUID.randomUUID();
+        when(appointment.getId()).thenReturn(appointmentId);
+        when(appointment.getEmployeeId()).thenReturn(employee);
+        when(repository.findByBranchIdAndDate(eq(branch), any(), any())).thenReturn(List.of(appointment));
+        when(employees.findAllEmployeeByBranchId(branch)).thenReturn(List.of());
+        var rows = application.showDailyAppointments(brand, branch, date);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().appointmentId()).isEqualTo(appointmentId);
+        assertThat(rows.getFirst().employeeFirstName()).isNull();
+        assertThat(rows.getFirst().employeeLastName()).isNull();
+        verify(branches).requireOwnedBy(branch, brand);
     }
 
     private AppointmentCreateRequest request(LocalTime start) {

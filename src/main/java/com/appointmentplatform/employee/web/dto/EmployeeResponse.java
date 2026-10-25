@@ -1,7 +1,6 @@
 package com.appointmentplatform.employee.web.dto;
 
-import com.appointmentplatform.employee.application.EmployeeDetails;
-import com.appointmentplatform.employee.domain.Employee;
+import com.appointmentplatform.employee.EmployeeDetails;
 
 import java.util.UUID;
 

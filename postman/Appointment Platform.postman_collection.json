@@ -113,6 +113,11 @@
       "key": "appointmentAccessToken",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "otherBrandBranchId",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -2208,6 +2213,125 @@
                     "exec": [
                       "pm.test('Status is 404', () => pm.response.to.have.status(404));",
                       "pm.test('Reason provided', () => pm.expect(pm.response.json().detail).to.be.a('string').and.not.empty);"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Daily Branch Appointments",
+          "description": "Owning BRAND session required. GET needs no body or CSRF. Select branchId and scheduleDate (YYYY-MM-DD). Separate branches of one brand are listed independently. All statuses are included. No subscription or appointment-acceptance requirement for viewing existing bookings. Employee names may be null if not found in the selected branch.",
+          "item": [
+            {
+              "name": "Get Daily Branch Appointments",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/{{branchId}}/{{scheduleDate}}",
+                "description": "Response: {\"details\":[...]}; empty day: {\"details\":[]}. Times are UTC Instants, display in Europe/Istanbul. Service name/duration are booking snapshots. Check a day with PENDING, APPROVED, REJECTED and CANCELLED bookings."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "if (pm.response.code === 200) {",
+                      "  const rows = pm.response.json().details;",
+                      "  pm.test('Details is an array', () => pm.expect(rows).to.be.an('array'));",
+                      "  pm.test('Only selected branch', () => rows.forEach(r => pm.expect(r.branchId).to.eql(pm.variables.get('branchId'))));",
+                      "  pm.test('Chronological order', () => rows.forEach((r, i) => { if (i) pm.expect(Date.parse(r.startsAt)).to.be.at.least(Date.parse(rows[i - 1].startsAt)); }));",
+                      "  pm.test('Istanbul date', () => rows.forEach(r => pm.expect(new Date(Date.parse(r.startsAt) + 3 * 60 * 60 * 1000).toISOString().slice(0, 10)).to.eql(pm.variables.get('scheduleDate'))));",
+                      "  pm.test('No access token exposed', () => rows.forEach(r => { pm.expect(r).not.to.have.property('accessTokenHash'); pm.expect(r).not.to.have.property('accessToken'); }));",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Invalid Date (400)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/{{branchId}}/2031-02-30",
+                "description": "Existing own branch and BRAND session required."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 400', () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Unknown Branch (404)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/{{$guid}}/{{scheduleDate}}",
+                "description": "Random missing branch; authenticated BRAND required."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404', () => pm.response.to.have.status(404));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Other Brand Branch (404)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/{{otherBrandBranchId}}/{{scheduleDate}}",
+                "description": "Set otherBrandBranchId to a branch belonging to a different brand. Stay logged in as the original brand."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 404', () => pm.response.to.have.status(404));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Anonymous Listing (401)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/{{branchId}}/{{scheduleDate}}",
+                "description": "Log out first, then call this request. Login again before running other panel requests."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 401', () => pm.response.to.have.status(401));"
                     ]
                   }
                 }

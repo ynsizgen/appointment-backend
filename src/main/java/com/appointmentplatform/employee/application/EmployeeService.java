@@ -1,6 +1,7 @@
 package com.appointmentplatform.employee.application;
 
 import com.appointmentplatform.branch.BranchOperations;
+import com.appointmentplatform.employee.EmployeeDetails;
 import com.appointmentplatform.employee.EmployeeOperations;
 import com.appointmentplatform.employee.domain.Employee;
 import com.appointmentplatform.employee.domain.EmployeeServiceAssignment;
@@ -16,7 +17,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -147,5 +147,17 @@ public class EmployeeService implements EmployeeOperations {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Seçilen hizmet bu çalışana atanmamış."
             );
         }
+    }
+
+    @Override
+    public List<EmployeeDetails> findAllEmployeeByBranchId(UUID branchId) {
+        return employeeRepository.findAllByBranchId(branchId).
+                stream().
+                map(e-> new EmployeeDetails(
+                        e.getId(),
+                        e.getBranchId(),
+                        e.getFirstName(),
+                        e.getLastName(),
+                        e.isActive())).toList();
     }
 }

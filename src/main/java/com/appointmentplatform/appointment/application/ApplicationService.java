@@ -3,8 +3,9 @@ package com.appointmentplatform.appointment.application;
 import com.appointmentplatform.appointment.AppointmentStatus;
 
 import com.appointmentplatform.appointment.AppointmentSource;
-
-
+import com.appointmentplatform.employee.EmployeeDetails;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.stereotype.Service;
 import com.appointmentplatform.appointment.domain.Appointment;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.appointment.web.dto.AppointmentCreateRequest;
@@ -26,12 +27,11 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -417,5 +417,44 @@ public class ApplicationService{
         );
     }
 
+    @PreAuthorize("hasRole('BRAND') and #brandId == authentication.principal.brandId")
+    public List<DailyBranchAppointmentsDetails> showDailyAppointments(UUID brandId,UUID branchId, LocalDate date) {
 
+        ZoneId zone = ZoneId.of("Europe/Istanbul");
+        branchOperations.requireOwnedBy(branchId, brandId);
+
+
+        Instant start = date.atStartOfDay().atZone(zone).toInstant();
+        Instant end = date.plusDays(1).atStartOfDay().atZone(zone).toInstant();
+
+        List<Appointment> appointments = appointmentRepository.findByBranchIdAndDate(branchId,start,end);
+        List<EmployeeDetails> employees = employeeOperations.findAllEmployeeByBranchId(branchId);
+
+        Map<UUID,EmployeeDetails> employeesById = employees.stream()
+                .collect(Collectors.toMap(EmployeeDetails::id, employee -> employee));
+
+        return appointments.stream()
+                .map(appointment -> {
+                    EmployeeDetails employee =
+                            employeesById.get(appointment.getEmployeeId());
+
+                    return new DailyBranchAppointmentsDetails(
+                            appointment.getId(),
+                            appointment.getBranchId(),
+                            appointment.getEmployeeId(),
+                            employee == null ? null : employee.firstName(),
+                            employee == null ? null : employee.lastName(),
+                            appointment.getServiceName(),
+                            appointment.getDurationMinutes(),
+                            appointment.getCustomerFirstName(),
+                            appointment.getCustomerLastName(),
+                            appointment.getCustomerPhone(),
+                            appointment.getStartsAt(),
+                            appointment.getEndsAt(),
+                            appointment.getStatus(),
+                            appointment.getSource()
+                    );
+                })
+                .toList();
+    }
 }

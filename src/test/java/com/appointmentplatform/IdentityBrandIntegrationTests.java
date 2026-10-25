@@ -1,6 +1,8 @@
 package com.appointmentplatform;
 
 import com.appointmentplatform.appointment.AppointmentSource;
+import com.appointmentplatform.appointment.domain.Appointment;
+import java.time.Instant;
 import com.appointmentplatform.appointment.AppointmentStatus;
 import com.appointmentplatform.appointment.persistence.AppointmentRepository;
 import com.appointmentplatform.identity.domain.*;
@@ -804,6 +806,76 @@ class IdentityBrandIntegrationTests {
         for (String action : List.of("approve-appointment/", "reject-appointment/", "cancel-appointment/")) {
             assertThat(post(owner, base + action + UUID.randomUUID(), "").statusCode()).isEqualTo(404);
         }
+    }
+
+    @Test
+    void dailyBranchAppointmentsRespectIstanbulBoundariesOwnershipAndResponseContract() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String email = "listing-" + suffix + "@example.com";
+        createVerifiedBrand(email, "Listing Brand");
+        var owner = loginBrand(email);
+        String otherEmail = "listing-other-" + suffix + "@example.com";
+        createVerifiedBrand(otherEmail, "Other Brand");
+        var other = loginBrand(otherEmail);
+        UUID branchId = UUID.fromString(json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText());
+        UUID secondBranch = UUID.fromString(json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText());
+        UUID employeeId = UUID.fromString(json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees",
+                "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":false}").body()).get("id").asText());
+        UUID otherEmployee = UUID.fromString(json.readTree(post(owner, "/api/panel/employee/" + secondBranch + "/employees",
+                "{\"firstName\":\"Ali\",\"lastName\":\"Demir\",\"active\":true}").body()).get("id").asText());
+        assertThat(post(owner, "/api/panel/addService", "{\"displayName\":\"Current catalog name\",\"durationMinutes\":30}").statusCode()).isEqualTo(202);
+        UUID serviceId = UUID.fromString(json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText());
+        LocalDate day = LocalDate.of(2031, 6, 10);
+        Instant midnight = day.atStartOfDay(ZoneId.of("Europe/Istanbul")).toInstant();
+        // Insert out of order; include terminal states and an inactive employee.
+        var late = listingAppointment(branchId, employeeId, serviceId, midnight.plusSeconds(86399), AppointmentStatus.CANCELLED);
+        var approved = listingAppointment(branchId, employeeId, serviceId, midnight.plusSeconds(7200), AppointmentStatus.APPROVED);
+        var first = listingAppointment(branchId, employeeId, serviceId, midnight, AppointmentStatus.PENDING);
+        var rejected = listingAppointment(branchId, employeeId, serviceId, midnight.plusSeconds(3600), AppointmentStatus.REJECTED);
+        listingAppointment(branchId, employeeId, serviceId, midnight.minusSeconds(3600), AppointmentStatus.CANCELLED);
+        listingAppointment(branchId, employeeId, serviceId, midnight.plusSeconds(86400), AppointmentStatus.PENDING);
+        var second = listingAppointment(secondBranch, otherEmployee, serviceId, midnight, AppointmentStatus.PENDING);
+        String path = "/api/panel/appointment/" + branchId + "/" + day;
+        var response = get(owner, path);
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        var rows = json.readTree(response.body()).get("details");
+        assertThat(rows.size()).isEqualTo(4);
+        var expected = List.of(first, rejected, approved, late);
+        for (int index = 0; index < expected.size(); index++) {
+            var row = rows.get(index);
+            var appointment = expected.get(index);
+            assertThat(row.get("appointmentId").asText()).isEqualTo(appointment.getId().toString());
+            assertThat(row.get("branchId").asText()).isEqualTo(branchId.toString());
+            assertThat(row.get("employeeFirstName").asText()).isEqualTo("Ada");
+            assertThat(row.get("employeeLastName").asText()).isEqualTo("Lovelace");
+            assertThat(row.get("serviceName").asText()).isEqualTo("Booked service name");
+            assertThat(row.get("durationMinutes").asInt()).isEqualTo(30);
+            assertThat(row.get("startsAt").asText()).isEqualTo(appointment.getStartsAt().toString());
+            assertThat(row.get("endsAt").asText()).isEqualTo(appointment.getEndsAt().toString());
+            assertThat(row.get("appointmentStatus").asText()).isEqualTo(appointment.getStatus().name());
+            assertThat(row.get("appointmentSource").asText()).isEqualTo("BRAND");
+            assertThat(row.get("customerPhone").asText()).isEqualTo("+905551112233");
+            assertThat(row.has("accessTokenHash")).isFalse();
+        }
+        assertThat(json.readTree(get(owner, "/api/panel/appointment/" + secondBranch + "/" + day).body())
+                .get("details").get(0).get("appointmentId").asText()).isEqualTo(second.getId().toString());
+        assertThat(json.readTree(get(owner, "/api/panel/appointment/" + branchId + "/" + day.plusDays(2)).body())
+                .get("details").size()).isZero();
+        assertThat(get(other, path).statusCode()).isEqualTo(404);
+        assertThat(get(session(), path).statusCode()).isEqualTo(401);
+        var admin = createAndLoginAdmin("listing-" + suffix);
+        assertThat(get(admin, path).statusCode()).isEqualTo(403);
+        assertThat(get(owner, "/api/panel/appointment/" + UUID.randomUUID() + "/" + day).statusCode()).isEqualTo(404);
+        assertThat(get(owner, "/api/panel/appointment/" + branchId + "/2031-02-30").statusCode()).isEqualTo(400);
+        assertThat(get(owner, "/api/panel/appointment/not-a-uuid/" + day).statusCode()).isEqualTo(400);
+    }
+
+    private Appointment listingAppointment(UUID branchId, UUID employeeId, UUID serviceId,
+            Instant start, AppointmentStatus status) {
+        return appointments.saveAndFlush(new Appointment(UUID.randomUUID(), branchId, employeeId, serviceId,
+                "Booked service name", 30, "Test", "Customer", "+905551112233", null,
+                start, start.plusSeconds(1800), status, AppointmentSource.BRAND, clock.instant(),
+                start, Crypto.hash(crypto.token()), start.plusSeconds(30L * 86400)));
     }
 
     @Test
