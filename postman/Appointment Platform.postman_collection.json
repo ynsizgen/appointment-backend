@@ -2766,6 +2766,74 @@
               }
             }
           ]
+        },
+        {
+          "name": "Employees",
+          "item": [
+            {
+              "name": "Get Active Employees for Service",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/employee/branches/{{branchId}}/services/{{serviceId}}",
+                "description": "No login or CSRF required. Set branchId and serviceId from the public branch service list. Lists active employees assigned to that service in that branch, ordered by firstName, lastName, id. Returns [] if no employees qualify. This is not date/time availability and does not select employeeId automatically."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"Returns an employee list\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));",
+                      "pm.test(\"Employees match the branch and are active\", () => { for (const e of pm.response.json()) { pm.expect(e).to.have.all.keys(\"id\", \"branchId\", \"firstName\", \"lastName\", \"active\"); pm.expect(e.branchId).to.eql(pm.variables.get(\"branchId\")); pm.expect(e.active).to.eql(true); } });"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reject Unassigned Service",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/employee/branches/{{branchId}}/services/{{$randomUUID}}",
+                "description": "Uses an unknown service ID to verify that missing branch-service membership is rejected."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Explains missing branch service\", () => pm.expect(pm.response.json().detail).to.eql(\"Bu hizmet seçilen şubede sunulmuyor.\"));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reject Invalid Branch ID",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/employee/branches/not-a-uuid/services/{{serviceId}}",
+                "description": "Rejects an invalid branch UUID before executing the employee query."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 400\", () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
         }
       ]
     }

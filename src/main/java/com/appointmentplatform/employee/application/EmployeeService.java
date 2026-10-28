@@ -165,4 +165,13 @@ public class EmployeeService implements EmployeeOperations {
                         e.getLastName(),
                         e.isActive())).toList();
     }
+
+    public List<EmployeeDetails> showAvailableEmployees(UUID branchId, UUID serviceId) {
+
+        serviceOperations.requireAssignedToBranch(serviceId, branchId);
+
+        return employeeRepository.findAvailableEmployees(serviceId, branchId)
+                .stream().map(e-> new EmployeeDetails(e.getId(),e.getBranchId(),e.getFirstName(),e.getLastName(),e.isActive()))
+                .toList();
+    }
 }

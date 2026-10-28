@@ -218,7 +218,7 @@ Brands have an immutable, unique `slug` (varchar(120)). New brands use a normali
 
 `GET /api/panel/brand` and cancellation-policy responses include `slug`. The future frontend route is `/randevu/{slug}`; this backend does not serve that page. It calls `GET /api/public/brands/{slug}` without authentication, CSRF or an appointment token. The public response is `{id, displayName, slug, branches: [{id, name, address, googleMapsUrl}]}`. Only the matching brand's branches with acceptingAppointments=true are returned, in createdAt/id order. No accepting branch returns an empty array; unknown slug returns 404. Discovery is informational: it does not grant reservation permission or bypass subscription, schedule, OTP or overlap checks at creation.
 
-Brand delegates the branch lookup through BranchOperations and PublicBranchDetails; brand declares branch as an allowed dependency, without accessing its repository/entity. This is an acyclic dependency. Public branch-service discovery is implemented as described below. Public employee/availability discovery APIs remain subsequent work; existing panel endpoints are not made public.
+Brand delegates the branch lookup through BranchOperations and PublicBranchDetails; brand declares branch as an allowed dependency, without accessing its repository/entity. This is an acyclic dependency. Public branch-service discovery is implemented as described below. Public employee discovery is implemented below; public availability discovery remains subsequent work; existing panel endpoints are not made public.
 
 Postman: run Brand → Get Own Brand to capture brandSlug; then Public Booking → Get Brand by Slug. Log out to verify anonymous access. Unknown Brand Slug expects 404. Reimport the collection JSON. The URL identifies a business, not an individual appointment; SMS appointment access tokens remain separate.
 
@@ -234,3 +234,11 @@ Services remain brand-owned with a shared name and duration. V26 adds explicit `
 Assignments use a JPA entity and repository save/delete. Both mutations lock the existing service row with PESSIMISTIC_WRITE until transaction completion; listing uses JPQL. No additional migration is needed for this JPA mapping.
 
 Branch-service membership is now checked during employee assignment, available-time listing, and both brand/customer appointment creation. Missing membership returns 400 with "Bu hizmet seçilen şubede sunulmuyor." Removing an assignment preserves existing employee assignments and appointments, but blocks new bookings until the service is reassigned to the branch.
+
+## Public employee discovery
+
+`GET /api/public/employee/branches/{branchId}/services/{serviceId}` requires no login, CSRF token or body. Select a branch and one of its assigned services first. The response is a list of `id`, `branchId`, `firstName`, `lastName`, `active`. Only active employees assigned to that service in that branch are returned, ordered by firstName, lastName and id. A valid branch-service assignment with no matching employees returns `200 []`. Missing branch-service membership (including unknown IDs) returns `400`; malformed UUIDs also return `400`.
+
+The endpoint uses EmployeeService and an EmployeeRepository JPQL query. ServiceOperations checks branch-service membership; service does not depend on employee. No migration is required. This lists eligible active employees, not free appointment times; subscription, branch acceptance and date/time availability are not checked here.
+
+Postman: **Public Booking → Employees**. Reimport the collection, set branchId and serviceId, then choose an employee ID from the response for later requests.

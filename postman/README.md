@@ -243,7 +243,7 @@ No authentication, CSRF, or appointment token is required. The response contains
 
 Only the matching brand's branches with `acceptingAppointments=true` are returned, ordered by `createdAt` then `id`. If no branch accepts bookings, the array is empty. Unknown slugs return `404`. Discovery does not grant booking permission or bypass subscription, schedule, OTP, or overlap checks during creation.
 
-Brand looks up branches through `BranchOperations` and `PublicBranchDetails`, without accessing the branch entity/repository. Public branch-service discovery is available under Public Booking. Public employee and availability discovery APIs remain subsequent work; existing panel endpoints have not been made public.
+Brand looks up branches through `BranchOperations` and `PublicBranchDetails`, without accessing the branch entity/repository. Public branch-service discovery is available under Public Booking. Public employee discovery is available under Public Booking → Employees; public availability discovery remains subsequent work; existing panel endpoints have not been made public.
 
 In Postman:
 
@@ -273,3 +273,11 @@ Branch-service membership is now checked during employee assignment, available-t
 ### Branch membership checks
 
 Order: create a brand service → assign it to the branch → assign it to an employee → request availability/create a booking. Use **Services → Branch Assignment Checks (Manual)** after removing the branch assignment. Run these checks manually with valid prerequisite data, then reassign the service. PUT/DELETE requests include the CSRF header. Reimport the updated collection into Postman.
+
+## Public employee discovery
+
+`GET /api/public/employee/branches/{branchId}/services/{serviceId}` requires no login, CSRF token or body. Select a branch and one of its assigned services first. The response is a list of `id`, `branchId`, `firstName`, `lastName`, `active`. Only active employees assigned to that service in that branch are returned, ordered by firstName, lastName and id. A valid branch-service assignment with no matching employees returns `200 []`. Missing branch-service membership (including unknown IDs) returns `400`; malformed UUIDs also return `400`.
+
+The endpoint uses EmployeeService and an EmployeeRepository JPQL query. ServiceOperations checks branch-service membership; service does not depend on employee. No migration is required. This lists eligible active employees, not free appointment times; subscription, branch acceptance and date/time availability are not checked here.
+
+Postman: **Public Booking → Employees**. Reimport the collection, set branchId and serviceId, then choose an employee ID from the response for later requests.
