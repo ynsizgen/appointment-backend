@@ -1,5 +1,7 @@
 package com.appointmentplatform.brand.domain;
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
+
 import java.time.Instant;
 import java.util.UUID;
 @Entity
@@ -9,7 +11,9 @@ public class Brand {
     private UUID id;
     @Column(nullable = false, length = 200)
     private String displayName;
-    @org.hibernate.annotations.CreationTimestamp(source = org.hibernate.annotations.SourceType.DB)
+    @Column(nullable = false, unique = true, updatable = false, length = 120)
+    private String slug;
+    @CreationTimestamp(source = org.hibernate.annotations.SourceType.DB)
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
     @Column(nullable = false)
@@ -28,9 +32,13 @@ public class Brand {
     public Brand(UUID id, String displayName) {
         this.id = id;
         this.displayName = displayName;
+        this.slug = BrandSlug.generate(displayName, id);
     }
     public UUID id() {
         return id;
+    }
+    public String slug() {
+        return slug;
     }
     public String displayName() {
         return displayName;

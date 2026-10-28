@@ -211,3 +211,26 @@ Appointments and branch employees are fetched in two bulk data queries and joine
 Postman: Appointments → Daily Branch Appointments. Set branchId and scheduleDate. For the foreign-branch check, set otherBrandBranchId to another brand's branch while keeping the original login. Run the anonymous check after logout, then log in again. Reimport the collection. The database integration test covers midnight boundaries, sorting, all statuses, independent branches, inactive employees, snapshots, empty days and access/input errors.
 
 Reminder scheduling is implemented: creation queues 24h/2h jobs only when their due time is now or in the future. Worker rechecks eligibility before each reminder attempt, including retry. Missing, rejected, cancelled or already-started appointments cause SKIPPED, completion time and body clearing without another delivery attempt. Delayed reminders remain eligible before appointment start and contain the actual Istanbul date/time. V24 allows SKIPPED. Real provider integration and a panel SMS delivery-status API remain pending.
+
+## Public booking URL — 27 October 2026
+
+Brands have an immutable, unique `slug` (varchar(120)). New brands use a normalized ASCII display-name prefix plus the full brand UUID without hyphens; Turkish letters are transliterated, unsupported-only names use `brand`. The UUID suffix avoids duplicate-name collisions without a check-then-insert race. Existing brands receive `brand-<uuid>` in V25; existing IDs and names are retained. No slug-edit endpoint is provided. The database enforces NOT NULL, unique and lowercase URL-safe format.
+
+`GET /api/panel/brand` and cancellation-policy responses include `slug`. The future frontend route is `/randevu/{slug}`; this backend does not serve that page. It calls `GET /api/public/brands/{slug}` without authentication, CSRF or an appointment token. The public response is `{id, displayName, slug, branches: [{id, name, address, googleMapsUrl}]}`. Only the matching brand's branches with acceptingAppointments=true are returned, in createdAt/id order. No accepting branch returns an empty array; unknown slug returns 404. Discovery is informational: it does not grant reservation permission or bypass subscription, schedule, OTP or overlap checks at creation.
+
+Brand delegates the branch lookup through BranchOperations and PublicBranchDetails; brand declares branch as an allowed dependency, without accessing its repository/entity. This is an acyclic dependency. Public branch-service discovery is implemented as described below. Public employee/availability discovery APIs remain subsequent work; existing panel endpoints are not made public.
+
+Postman: run Brand → Get Own Brand to capture brandSlug; then Public Booking → Get Brand by Slug. Log out to verify anonymous access. Unknown Brand Slug expects 404. Reimport the collection JSON. The URL identifies a business, not an individual appointment; SMS appointment access tokens remain separate.
+
+## Branch service selection
+
+Services remain brand-owned with a shared name and duration. V26 adds explicit `branch_services` assignments; it does not automatically assign existing catalog services. Composite foreign keys enforce same-brand membership.
+
+- `PUT /api/panel/branches/{branchId}/services/{serviceId}` assigns a service.
+- `DELETE /api/panel/branches/{branchId}/services/{serviceId}` removes the assignment only.
+- Both require a BRAND session and CSRF, accept no body, and return 204 on repeated requests. Ownership violations or missing resources return 404.
+- `GET /api/public/branches/{branchId}/services` returns only assigned services (`id`, `displayName`, `durationMinutes`); an empty assignment list returns [], an unknown branch returns 404.
+
+Assignments use a JPA entity and repository save/delete. Both mutations lock the existing service row with PESSIMISTIC_WRITE until transaction completion; listing uses JPQL. No additional migration is needed for this JPA mapping.
+
+Branch-service membership is now checked during employee assignment, available-time listing, and both brand/customer appointment creation. Missing membership returns 400 with "Bu hizmet seçilen şubede sunulmuyor." Removing an assignment preserves existing employee assignments and appointments, but blocks new bookings until the service is reassigned to the branch.

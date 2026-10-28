@@ -87,6 +87,10 @@ public class ApplicationService{
         serviceOperations.requireOwnedBy(serviceId, brandId);
         employeeOperations.requireServiceAssigned(brandId, employeeId, serviceId);
 
+        serviceOperations.requireAssignedToBranch(
+                serviceId,
+                employeeOperations.branchId(employeeId)
+        );
 
         var service = serviceOperations.findById(serviceId);
 
@@ -182,6 +186,11 @@ public class ApplicationService{
 
         employeeOperations.requireServiceAssigned(brandId, request.employeeId(), request.serviceId());
         serviceOperations.requireOwnedBy(request.serviceId(), brandId);
+
+        serviceOperations.requireAssignedToBranch(
+                request.serviceId(),
+                branchId
+        );
 
         EmployeeDailyScheduleDetails employeeDailyScheduleDetails = employeeScheduleOperations.daily(brandId,request.employeeId(),request.date());
 

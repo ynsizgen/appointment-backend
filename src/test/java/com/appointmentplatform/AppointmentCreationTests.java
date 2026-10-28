@@ -55,6 +55,7 @@ class AppointmentCreationTests {
     @Test void customerCanBookExactlyOneHourAhead() {
         assertThat(application.createByCustomer(branch, request(LocalTime.of(11, 0)), "proof").startsAt())
                 .isEqualTo(Instant.parse("2026-10-12T08:00:00Z"));
+        verify(services).requireAssignedToBranch(service, branch);
     }
     @Test void customerCannotBookOneSecondBeforeBoundary() {
         assertThatThrownBy(() -> application.createByCustomer(branch, request(LocalTime.of(10, 59, 59)), "proof"))
@@ -64,6 +65,7 @@ class AppointmentCreationTests {
     @Test void brandCanBookEarlierThanCurrentTime() {
         assertThat(application.createByBrand(brand, request(LocalTime.of(9, 0))).startsAt())
                 .isEqualTo(Instant.parse("2026-10-12T06:00:00Z"));
+        verify(services).requireAssignedToBranch(service, branch);
     }
     @Test void appointmentCannotWrapIntoNextDay() {
         assertThatThrownBy(() -> application.createByCustomer(branch, request(LocalTime.of(23, 30)), "proof"))

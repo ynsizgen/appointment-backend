@@ -46,9 +46,11 @@ class AvailableStartTimesTests {
         var date = LocalDate.of(2026, 10, 16);
         var zone = ZoneId.of("Europe/Istanbul");
         UUID brand = UUID.randomUUID(), employee = UUID.randomUUID(), service = UUID.randomUUID();
+        UUID branch = UUID.randomUUID();
         var schedules = mock(EmployeeScheduleOperations.class);
         var employees = mock(EmployeeOperations.class);
         var services = mock(ServiceOperations.class);
+        when(employees.branchId(employee)).thenReturn(branch);
         var repository = mock(AppointmentRepository.class);
         var intervals = new ArrayList<EmployeeTimeIntervalDetails>();
         if (!hours.isEmpty()) for (String pair : hours.split(",")) {
@@ -75,6 +77,7 @@ class AvailableStartTimesTests {
         List<LocalTime> wanted = expected.isEmpty() ? List.of() : Arrays.stream(expected.split(",")).map(LocalTime::parse).toList();
         assertThat(application.getAvailableStartTimes(brand, service, employee, date).localTimes()).containsExactlyElementsOf(wanted);
         verify(services).requireOwnedBy(service, brand);
+        verify(services).requireAssignedToBranch(service, branch);
         verify(employees).requireServiceAssigned(brand, employee, service);
     }
 

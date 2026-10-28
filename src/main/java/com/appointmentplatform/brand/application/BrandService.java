@@ -1,5 +1,6 @@
 package com.appointmentplatform.brand.application;
 import com.appointmentplatform.brand.*;
+import com.appointmentplatform.branch.BranchOperations;
 import com.appointmentplatform.brand.domain.Brand;
 import com.appointmentplatform.brand.persistence.BrandRepository;
 import com.appointmentplatform.shared.ApiException;
@@ -13,8 +14,16 @@ import org.springframework.transaction.annotation.*;
 @Transactional(readOnly = true)
 public class BrandService implements BrandOperations {
     private final BrandRepository repository;
-    public BrandService(BrandRepository repository) {
+    private final BranchOperations branches;
+
+    public BrandService(BrandRepository repository, BranchOperations branches) {
         this.repository = repository;
+        this.branches = branches;
+    }
+    public PublicBrandDetails publicDetails(String slug) {
+        var brand = repository.findBySlug(slug)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "İşletme bulunamadı."));
+        return new PublicBrandDetails(brand.id(), brand.displayName(), brand.slug(), branches.acceptingBranches(brand.id()));
     }
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -26,7 +35,7 @@ public class BrandService implements BrandOperations {
     public BrandDetails own(UUID brandId) {
         var brand = repository.findById(brandId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Marka bulunamadı."));
-        return new BrandDetails(brand.id(), brand.displayName(), brand.cancellationNoticeHours());
+        return new BrandDetails(brand.id(), brand.displayName(), brand.cancellationNoticeHours(), brand.slug());
     }
 
     @Override
@@ -45,6 +54,6 @@ public class BrandService implements BrandOperations {
         var brand = repository.findById(brandId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Marka bulunamadı."));
         brand.changeCancellationNoticeHours(hours);
-        return new BrandDetails(brand.id(), brand.displayName(), brand.cancellationNoticeHours());
+        return new BrandDetails(brand.id(), brand.displayName(), brand.cancellationNoticeHours(), brand.slug());
     }
 }

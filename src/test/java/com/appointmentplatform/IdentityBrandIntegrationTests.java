@@ -512,6 +512,7 @@ class IdentityBrandIntegrationTests {
         String base = "/api/panel/appointment/available-slot/";
         String path = base + serviceId + "/" + employeeId + "/" + date;
         assertThat(get(owner, path).statusCode()).isEqualTo(400); // Not assigned yet.
+        assertThat(mutate(owner, "PUT", "/api/panel/branches/" + branchId + "/services/" + serviceId, "").statusCode()).isEqualTo(204);
         assertThat(post(owner, "/api/panel/employee/assign",
                 "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
         var response = get(owner, path);
@@ -603,6 +604,7 @@ class IdentityBrandIntegrationTests {
                 "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}").body()).get("id").asText();
         assertThat(post(owner, "/api/panel/addService", "{\"displayName\":\"Kesim\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
         String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        assertThat(mutate(owner, "PUT", "/api/panel/branches/" + branchId + "/services/" + serviceId, "").statusCode()).isEqualTo(204);
         assertThat(post(owner, "/api/panel/employee/assign",
                 "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
         var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
@@ -717,6 +719,7 @@ class IdentityBrandIntegrationTests {
         assertThat(post(owner, "/api/panel/addService",
                 "{\"displayName\":\"Kesim\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
         String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        assertThat(mutate(owner, "PUT", "/api/panel/branches/" + branchId + "/services/" + serviceId, "").statusCode()).isEqualTo(204);
         assertThat(post(owner, "/api/panel/employee/assign",
                 "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}").statusCode()).isEqualTo(200);
         var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
@@ -879,6 +882,54 @@ class IdentityBrandIntegrationTests {
     }
 
     @Test
+    void publicBrandSlugReturnsOnlySafeAcceptingBranchesWithoutLogin() throws Exception {
+        String email = "slug-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(email, "Ada Kuaför");
+        var owner = loginBrand(email);
+        var panel = json.readTree(get(owner, "/api/panel/brand").body());
+        String slug = panel.get("slug").asText();
+        assertThat(slug).startsWith("ada-kuafor-");
+        var anonymous = session();
+        String path = "/api/public/brands/" + slug;
+        var empty = get(anonymous, path);
+        assertThat(empty.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(empty.body()).get("branches").size()).isZero();
+
+        String openBranch = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        String closedBranch = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        assertThat(patch(owner, "/api/panel/branches/" + openBranch + "/appointment-acceptance",
+                "{\"acceptingAppointments\":true}").statusCode()).isEqualTo(200);
+        String otherEmail = "slug-other-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(otherEmail, "Ada Kuaför");
+        var other = loginBrand(otherEmail);
+        String otherSlug = json.readTree(get(other, "/api/panel/brand").body()).get("slug").asText();
+        assertThat(otherSlug).isNotEqualTo(slug);
+        String otherBranch = json.readTree(post(other, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        assertThat(patch(other, "/api/panel/branches/" + otherBranch + "/appointment-acceptance",
+                "{\"acceptingAppointments\":true}").statusCode()).isEqualTo(200);
+        var response = get(anonymous, path);
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = json.readTree(response.body());
+        assertThat(body.size()).isEqualTo(4);
+        assertThat(body.get("id").asText()).isEqualTo(panel.get("id").asText());
+        assertThat(body.get("displayName").asText()).isEqualTo("Ada Kuaför");
+        assertThat(body.get("slug").asText()).isEqualTo(slug);
+        assertThat(body.get("branches").size()).isEqualTo(1);
+        var branch = body.get("branches").get(0);
+        assertThat(branch.size()).isEqualTo(4);
+        assertThat(branch.get("id").asText()).isEqualTo(openBranch);
+        assertThat(branch.get("address").asText()).isEqualTo("İstanbul, Türkiye");
+        assertThat(branch.get("googleMapsUrl").asText()).isEqualTo("https://maps.google.com/example");
+        assertThat(response.body()).doesNotContain(email, closedBranch, otherBranch, "password", "customerPhone");
+        assertThat(get(anonymous, "/api/public/brands/no-such-brand").statusCode()).isEqualTo(404);
+        assertThat(patch(owner, "/api/panel/brand/cancellation-policy", "{\"cancellationNoticeHours\":12}").statusCode()).isEqualTo(200);
+        assertThat(json.readTree(get(owner, "/api/panel/brand").body()).get("slug").asText()).isEqualTo(slug);
+        assertThat(patch(owner, "/api/panel/branches/" + openBranch + "/appointment-acceptance",
+                "{\"acceptingAppointments\":false}").statusCode()).isEqualTo(200);
+        assertThat(json.readTree(get(anonymous, path).body()).get("branches").size()).isZero();
+    }
+
+    @Test
     void cancellationPolicyValidatesInputAndOnlyUpdatesLoggedInBrand() throws Exception {
         String email = "policy-" + UUID.randomUUID() + "@example.com";
         createVerifiedBrand(email, "Policy Brand");
@@ -911,6 +962,135 @@ class IdentityBrandIntegrationTests {
                 "{\"phone\":\"" + phone + "\",\"code\":\"" + code.getValue() + "\"}");
         assertThat(verified.statusCode()).as(verified.body()).isEqualTo(200);
         session.phoneToken = json.readTree(verified.body()).get("verificationToken").asText();
+    }
+
+    @Test
+    void branchServiceAssignmentRequiresOwnershipAndIsIdempotent() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String ownerEmail = "branch-service-" + suffix + "@example.com";
+        String otherEmail = "other-branch-service-" + suffix + "@example.com";
+        createVerifiedBrand(ownerEmail, "Owner");
+        createVerifiedBrand(otherEmail, "Other");
+        var owner = loginBrand(ownerEmail);
+        var other = loginBrand(otherEmail);
+        var anonymous = session();
+        var admin = createAndLoginAdmin("branch-service-" + suffix);
+        String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        String secondBranchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        assertThat(post(owner, "/api/panel/addService", "{\"displayName\":\"Cut\",\"durationMinutes\":30}").statusCode()).isEqualTo(202);
+        assertThat(post(other, "/api/panel/addService", "{\"displayName\":\"Other\",\"durationMinutes\":30}").statusCode()).isEqualTo(202);
+        String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        String foreignServiceId = json.readTree(get(other, "/api/panel/services").body()).get(0).get("id").asText();
+        String path = "/api/panel/branches/" + branchId + "/services/" + serviceId;
+        String publicPath = "/api/public/branches/" + branchId + "/services";
+        assertThat(get(anonymous, publicPath).body()).isEqualTo("[]");
+
+        for (String method : List.of("PUT", "DELETE")) {
+            assertThat(mutate(anonymous, method, path, "").statusCode()).isEqualTo(401);
+            assertThat(mutate(admin, method, path, "").statusCode()).isEqualTo(403);
+            assertThat(mutate(other, method, path, "").statusCode()).isEqualTo(404);
+            assertThat(mutate(owner, method, "/api/panel/branches/" + branchId + "/services/" + foreignServiceId, "").statusCode()).isEqualTo(404);
+            assertThat(mutate(owner, method, "/api/panel/branches/" + UUID.randomUUID() + "/services/" + serviceId, "").statusCode()).isEqualTo(404);
+            assertThat(mutate(owner, method, "/api/panel/branches/" + branchId + "/services/" + UUID.randomUUID(), "").statusCode()).isEqualTo(404);
+        }
+        var assignBarrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                assignBarrier.await(10, TimeUnit.SECONDS);
+                return mutate(owner, "PUT", path, "").statusCode();
+            });
+            var second = executor.submit(() -> {
+                assignBarrier.await(10, TimeUnit.SECONDS);
+                return mutate(owner, "PUT", path, "").statusCode();
+            });
+            assertThat(first.get(20, TimeUnit.SECONDS)).isEqualTo(204);
+            assertThat(second.get(20, TimeUnit.SECONDS)).isEqualTo(204);
+        }
+        assertThat(mutate(owner, "PUT", path, "").statusCode()).isEqualTo(204);
+        var assigned = json.readTree(get(anonymous, publicPath).body());
+        assertThat(assigned.size()).isEqualTo(1);
+        assertThat(assigned.get(0).get("id").asText()).isEqualTo(serviceId);
+        String secondPath = "/api/panel/branches/" + secondBranchId + "/services/" + serviceId;
+        assertThat(mutate(owner, "PUT", secondPath, "").statusCode()).isEqualTo(204);
+        var deleteBarrier = new CyclicBarrier(2);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> {
+                deleteBarrier.await(10, TimeUnit.SECONDS);
+                return mutate(owner, "DELETE", path, "").statusCode();
+            });
+            var second = executor.submit(() -> {
+                deleteBarrier.await(10, TimeUnit.SECONDS);
+                return mutate(owner, "DELETE", path, "").statusCode();
+            });
+            assertThat(first.get(20, TimeUnit.SECONDS)).isEqualTo(204);
+            assertThat(second.get(20, TimeUnit.SECONDS)).isEqualTo(204);
+        }
+        assertThat(mutate(owner, "DELETE", path, "").statusCode()).isEqualTo(204);
+        assertThat(get(anonymous, publicPath).body()).isEqualTo("[]");
+        assertThat(json.readTree(get(anonymous, "/api/public/branches/" + secondBranchId + "/services").body()).size()).isEqualTo(1);
+        assertThat(json.readTree(get(owner, "/api/panel/services").body()).size()).isEqualTo(1);
+    }
+
+    @Test
+    void removedBranchServiceBlocksNewBookingsAvailabilityAndEmployeeAssignments() throws Exception {
+        String email = "membership-" + UUID.randomUUID() + "@example.com";
+        createVerifiedBrand(email, "Membership");
+        var account = users.findByEmail(email).orElseThrow();
+        account.changeStatus(true, true, clock.instant());
+        users.saveAndFlush(account);
+        var owner = loginBrand(email);
+        var customer = session();
+        String branchId = json.readTree(post(owner, "/api/panel/branches", branchPayload()).body()).get("id").asText();
+        assertThat(patch(owner, "/api/panel/branches/" + branchId + "/appointment-acceptance",
+                "{\"acceptingAppointments\":true}").statusCode()).isEqualTo(200);
+        String employeeBody = "{\"firstName\":\"Ada\",\"lastName\":\"Lovelace\",\"active\":true}";
+        String employeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees", employeeBody).body()).get("id").asText();
+        String secondEmployeeId = json.readTree(post(owner, "/api/panel/employee/" + branchId + "/employees", employeeBody).body()).get("id").asText();
+        assertThat(post(owner, "/api/panel/addService", "{\"displayName\":\"Cut\",\"durationMinutes\":60}").statusCode()).isEqualTo(202);
+        String serviceId = json.readTree(get(owner, "/api/panel/services").body()).get(0).get("id").asText();
+        String assignmentBody = "{\"employeeId\":\"" + employeeId + "\",\"serviceId\":\"" + serviceId + "\"}";
+        var deniedAssignment = post(owner, "/api/panel/employee/assign", assignmentBody);
+        assertThat(deniedAssignment.statusCode()).isEqualTo(400);
+        assertThat(deniedAssignment.body()).contains("Bu hizmet seçilen şubede sunulmuyor.");
+        String branchServicePath = "/api/panel/branches/" + branchId + "/services/" + serviceId;
+        assertThat(mutate(owner, "PUT", branchServicePath, "").statusCode()).isEqualTo(204);
+        assertThat(post(owner, "/api/panel/employee/assign", assignmentBody).statusCode()).isEqualTo(200);
+        var date = LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul")))
+                .plusWeeks(1).with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+        String availablePath = "/api/panel/appointment/available-slot/" + serviceId + "/" + employeeId + "/" + date;
+        assertThat(get(owner, availablePath).statusCode()).isEqualTo(200);
+        String body = """
+                {"employeeId":"%s","serviceId":"%s","date":"%s","startTime":"10:00",
+                 "customerFirstName":"Ada","customerLastName":"Lovelace","customerPhone":"+905550000987"}
+                """.formatted(employeeId, serviceId, date);
+        var created = post(owner, "/api/panel/appointment/create", body);
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+        UUID appointmentId = UUID.fromString(json.readTree(created.body()).get("id").asText());
+        assertThat(mutate(owner, "DELETE", branchServicePath, "").statusCode()).isEqualTo(204);
+        long count = appointments.count();
+        var unavailable = get(owner, availablePath);
+        assertThat(unavailable.statusCode()).isEqualTo(400);
+        assertThat(unavailable.body()).contains("Bu hizmet seçilen şubede sunulmuyor.");
+        var secondAssignment = post(owner, "/api/panel/employee/assign", assignmentBody.replace(employeeId, secondEmployeeId));
+        assertThat(secondAssignment.statusCode()).isEqualTo(400);
+        assertThat(secondAssignment.body()).contains("Bu hizmet seçilen şubede sunulmuyor.");
+        verifyPhone(customer, "+905550000987");
+        String nextBooking = body.replace("10:00", "15:00");
+        String publicPath = "/api/public/appointment/create/" + branchId;
+        for (var caller : List.of(owner, customer)) {
+            String path = caller == owner ? "/api/panel/appointment/create" : publicPath;
+            var denied = post(caller, path, nextBooking);
+            assertThat(denied.statusCode()).as(denied.body()).isEqualTo(400);
+            assertThat(denied.body()).contains("Bu hizmet seçilen şubede sunulmuyor.");
+        }
+        assertThat(appointments.count()).isEqualTo(count);
+        assertThat(appointments.findById(appointmentId).orElseThrow().getStatus()).isEqualTo(AppointmentStatus.PENDING);
+        assertThat(json.readTree(get(owner, "/api/panel/employee/" + employeeId + "/services").body()).size()).isEqualTo(1);
+        assertThat(mutate(owner, "PUT", branchServicePath, "").statusCode()).isEqualTo(204);
+        assertThat(get(owner, availablePath).statusCode()).isEqualTo(200);
+        // The rejected create rolled back proof consumption, so the same proof still works.
+        var restored = post(customer, publicPath, nextBooking);
+        assertThat(restored.statusCode()).as(restored.body()).isEqualTo(201);
     }
 
     private String branchPayload() {

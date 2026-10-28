@@ -118,6 +118,11 @@
       "key": "otherBrandBranchId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "brandSlug",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -478,7 +483,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status is 200', () => pm.response.to.have.status(200));",
-                  "if (pm.response.code === 200) pm.collectionVariables.set('brandId', pm.response.json().id);"
+                  "if (pm.response.code === 200) pm.collectionVariables.set('brandId', pm.response.json().id);",
+                  "if (pm.response.code === 200) pm.collectionVariables.set('brandSlug', pm.response.json().slug);"
                 ]
               }
             }
@@ -1086,6 +1092,212 @@
               "response": []
             }
           ]
+        },
+        {
+          "name": "Branch Assignments",
+          "item": [
+            {
+              "name": "Assign Service to Branch",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/services/{{serviceId}}",
+                "description": "Requires a BRAND session and CSRF token. No body. Returns 204, including repeated requests. Both resources must belong to the signed-in brand. Removing an assignment does not delete the service or employee assignments."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 204\", () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Unassign Service from Branch",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/branches/{{branchId}}/services/{{serviceId}}",
+                "description": "Requires a BRAND session and CSRF token. No body. Returns 204, including repeated requests. Both resources must belong to the signed-in brand. Removing an assignment does not delete the service or employee assignments."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 204\", () => pm.response.to.have.status(204));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Branch Assignment Checks (Manual)",
+          "item": [
+            {
+              "name": "Reject Missing Branch Assignment — Assign Service",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/employee/assign",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Manual negative test: set up a valid branch, service and employee assignment, then run Unassign Service from Branch. Keep the employee-service assignment. Expected: 400 with the branch-service error. Booking also requires active subscription and appointment acceptance; customer creation requires a valid phone verification token. Reassign the service to the branch after testing."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Missing branch assignment returns 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Explains missing branch service\", () => pm.expect(pm.response.json().detail).to.eql(\"Bu hizmet seçilen şubede sunulmuyor.\"));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reject Missing Branch Assignment — Get Available Slots",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/panel/appointment/available-slot/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
+                "description": "Manual negative test: set up a valid branch, service and employee assignment, then run Unassign Service from Branch. Keep the employee-service assignment. Expected: 400 with the branch-service error. Booking also requires active subscription and appointment acceptance; customer creation requires a valid phone verification token. Reassign the service to the branch after testing."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Missing branch assignment returns 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Explains missing branch service\", () => pm.expect(pm.response.json().detail).to.eql(\"Bu hizmet seçilen şubede sunulmuyor.\"));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reject Missing Branch Assignment — Create Appointment as Brand",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/panel/appointment/create",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"{{scheduleDate}}\",\n  \"startTime\": \"{{appointmentStartTime}}\",\n  \"customerFirstName\": \"Ada\",\n  \"customerLastName\": \"Lovelace\",\n  \"customerPhone\": \"+905551112233\",\n  \"customerEmail\": \"ada@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Manual negative test: set up a valid branch, service and employee assignment, then run Unassign Service from Branch. Keep the employee-service assignment. Expected: 400 with the branch-service error. Booking also requires active subscription and appointment acceptance; customer creation requires a valid phone verification token. Reassign the service to the branch after testing."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Missing branch assignment returns 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Explains missing branch service\", () => pm.expect(pm.response.json().detail).to.eql(\"Bu hizmet seçilen şubede sunulmuyor.\"));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reject Missing Branch Assignment — Create Appointment as Customer",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "{{csrfHeader}}",
+                    "value": "{{csrfToken}}"
+                  },
+                  {
+                    "key": "X-Phone-Verification",
+                    "value": "{{phoneVerificationToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/api/public/appointment/create/{{branchId}}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"employeeId\": \"{{employeeId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"date\": \"{{scheduleDate}}\",\n  \"startTime\": \"{{appointmentStartTime}}\",\n  \"customerFirstName\": \"Ada\",\n  \"customerLastName\": \"Lovelace\",\n  \"customerPhone\": \"{{customerPhone}}\",\n  \"customerEmail\": \"ada@example.com\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Manual negative test: set up a valid branch, service and employee assignment, then run Unassign Service from Branch. Keep the employee-service assignment. Expected: 400 with the branch-service error. Booking also requires active subscription and appointment acceptance; customer creation requires a valid phone verification token. Reassign the service to the branch after testing."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Missing branch assignment returns 400\", () => pm.response.to.have.status(400));",
+                      "pm.test(\"Explains missing branch service\", () => pm.expect(pm.response.json().detail).to.eql(\"Bu hizmet seçilen şubede sunulmuyor.\"));"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
         }
       ]
     },
@@ -1202,7 +1414,7 @@
                     }
                   }
                 },
-                "description": "Requires brand login, refreshed CSRF, employeeId and serviceId. Both records must belong to the logged-in brand."
+                "description": "Requires BRAND login, refreshed CSRF, employeeId and serviceId. First assign the service to the employee's branch using Services → Branch Assignments → Assign Service to Branch. Missing branch assignment returns 400."
               },
               "event": [
                 {
@@ -1624,7 +1836,7 @@
                 "method": "GET",
                 "header": [],
                 "url": "{{baseUrl}}/api/panel/appointment/available-slot/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
-                "description": "Set employeeId, assigned serviceId and scheduleDate (YYYY-MM-DD). Missing employee weekday settings inherit the branch date hours. closedDays explicitly closes weekly days; an empty employee date override closes that date. Branch closure and inactive employees always yield no times. Starts are at least one hour ahead in Europe/Istanbul. No request body; PENDING/APPROVED appointments are subtracted."
+                "description": "Set employeeId, assigned serviceId and scheduleDate (YYYY-MM-DD). Missing employee weekday settings inherit the branch date hours. closedDays explicitly closes weekly days; an empty employee date override closes that date. Branch closure and inactive employees always yield no times. Starts are at least one hour ahead in Europe/Istanbul. No request body; PENDING/APPROVED appointments are subtracted. The service must be assigned both to the employee and to that employee's branch; missing branch-service membership returns 400."
               },
               "event": [
                 {
@@ -1683,7 +1895,7 @@
                     }
                   }
                 },
-                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking. Response includes cancellationDeadline (UTC), captured from the brand policy at creation. Later policy changes do not alter it."
+                "description": "Login as owning BRAND and refresh CSRF. No one-hour or past-time restriction for BRAND. Employee must be active, service assigned and the complete appointment must fit working hours. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking. Response includes cancellationDeadline (UTC), captured from the brand policy at creation. Later policy changes do not alter it. The service must be assigned both to the employee and to that employee's branch; missing branch-service membership returns 400."
               },
               "event": [
                 {
@@ -1853,7 +2065,7 @@
                     }
                   }
                 },
-                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. Run Request SMS Code then Verify SMS Code first. Token is bound to customerPhone, expires after 5 minutes and is consumed only by a successful booking. Omit customerEmail to test optional email. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking. Response includes cancellationDeadline (UTC), captured from the brand policy at creation. Later policy changes do not alter it."
+                "description": "For an anonymous test, log out then GET /api/auth/csrf again; retain the new cookie and token. Employee must belong to branchId. Start must be at least one hour ahead in Europe/Istanbul. Run Request SMS Code then Verify SMS Code first. Token is bound to customerPhone, expires after 5 minutes and is consumed only by a successful booking. Omit customerEmail to test optional email. Requires subscriptionActive=true for the brand account and acceptingAppointments=true for the branch. Disabled settings return 409 without creating a booking. Response includes cancellationDeadline (UTC), captured from the brand policy at creation. Later policy changes do not alter it. The service must be assigned both to the employee and to that employee's branch; missing branch-service membership returns 400."
               },
               "event": [
                 {
@@ -2478,6 +2690,80 @@
                 }
               ],
               "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Public Booking",
+      "description": "Run Brand → Get Own Brand to save brandSlug, then logout to verify anonymous access. This is the public business lookup, not a single-appointment access token. The frontend /randevu/{slug} route is not implemented here.",
+      "item": [
+        {
+          "name": "Get Brand by Slug",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/brands/{{brandSlug}}",
+            "description": "No login, CSRF or appointment token required. Returns business name and only branches with acceptingAppointments=true. Empty branches means no branch currently accepts bookings. Subscription eligibility is rechecked when creating an appointment; discovery is not a reservation permission."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('Matching slug', () => pm.expect(body.slug).to.eql(pm.variables.get('brandSlug')));",
+                  "  pm.test('Branches array', () => pm.expect(body.branches).to.be.an('array'));",
+                  "  pm.test('Only public fields', () => pm.expect(Object.keys(body).sort()).to.eql(['branches', 'displayName', 'id', 'slug']));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Unknown Brand Slug (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/brands/unknown-{{$guid}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Branch Services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/branches/{{branchId}}/services",
+            "description": "Public list of explicitly assigned branch services. Returns [] if none are assigned, or 404 if the branch does not exist."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Returns 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Returns a list\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
             }
           ]
         }

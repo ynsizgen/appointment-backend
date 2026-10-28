@@ -1,172 +1,275 @@
-# Postman kullanımı
+# Postman Guide
 
-Import edilecek dosya: `Appointment Platform.postman_collection.json`.
-Bu README yalnızca kullanım rehberidir; Postman’a import edilmez.
+Import `Appointment Platform.postman_collection.json` into Postman. This README is a usage guide, not an import file.
 
-## Klasörler
+## Collection folders
 
-| Klasör | İçerik |
+| Folder | Purpose |
 | --- | --- |
-| Authentication / Session | CSRF alma, yenileme, mevcut hesap, logout |
-| Authentication / Registration | Brand kaydı ve e-posta doğrulama |
-| Authentication / Login | Brand veya admin girişi |
-| Brand | Giriş yapan brand bilgisi |
-| Branches | Branch oluşturma, haftalık çalışma saatleri ve randevu kabul ayarı |
-| Services | Hizmet oluşturma ve listeleme |
-| Employees | Çalışan oluşturma ve listeleme |
-| Employees / Service Assignments | Assign, atanmış hizmetleri listeleme, unassign |
-| Admin | Hesapları listeleme ve durum değiştirme |
-| System | Health ve doğrulama sayfasının HTML/JS kontrolleri |
+| Authentication / Session | Get or refresh CSRF, inspect the current account, and log out |
+| Authentication / Registration | Register a brand and verify its email address |
+| Authentication / Login | Sign in as a brand or admin |
+| Brand | Read the current brand, capture its slug, and update its cancellation policy |
+| Branches | Create branches, configure weekly/date-specific hours, and control appointment acceptance |
+| Services | Create and list services |
+| Employees | Create and list employees; manage working hours |
+| Employees / Service Assignments | Assign services, list assignments, and remove assignments |
+| Appointments / Availability | Find available appointment start times |
+| Appointments / Brand Creation | Create appointments from the brand panel |
+| Appointments / Customer Creation | Verify a customer's phone and create an appointment |
+| Appointments / Appointment Actions | Approve, reject, or cancel appointments as the brand |
+| Appointments / Customer Access and Cancellation | View or cancel an appointment using its access token |
+| Appointments / Daily Branch Appointments | List a branch's appointments for a selected day |
+| Public Booking | Look up a brand and its accepting branches by slug |
+| Admin | List accounts and update account status |
+| System | Check health and the verification page's HTML/JavaScript |
 
-`Validation Checks` klasörleri bilerek hatalı istekler içerir; beklenen 400/409 cevapları başarılı test sayılır.
+`Validation Checks` folders intentionally contain invalid requests. Expected `400` or `409` responses count as successful tests.
 
-## Başlangıç
+## Getting started
 
-1. Collection Variables içinde `baseUrl` ve kullanacağın hesabın bilgilerini ayarla.
-2. Authentication → Session → Get CSRF çalıştır.
-3. Authentication → Login içinden **Brand Login veya Admin Login** seç. İkisini arka arkaya çalıştırma.
-4. Authentication → Session → Refresh CSRF After Login çalıştır.
-5. İlgili işlem klasörüne geç. Postman session cookie’sini otomatik taşır.
+1. Set `baseUrl` and the required account credentials in the collection variables.
+2. Run **Authentication → Session → Get CSRF**.
+3. Choose **Brand Login** or **Admin Login** under **Authentication → Login**. Do not run both consecutively unless you intend to switch accounts.
+4. Run **Authentication → Session → Refresh CSRF After Login**.
+5. Open the relevant operation folder. Postman sends the session cookie automatically.
 
-## Employee–service işlemleri
+Do not run the entire collection as one scenario: login requests switch roles, registration requires an email token, and some requests modify existing data.
 
-Brand olarak giriş yaptıktan sonra:
+After a collection update, reimport the JSON file. Save any customized variable values first and avoid confusing the old and new copies. Postman environment variables can override collection variables; check the effective values when troubleshooting.
 
-1. İlk girişte Branches → Create Branch ile adres, açık günler ve saatleri gir. Örnekte pazartesi–cumartesi 08.00–20.00 vardır; günleri ve saatleri değiştirebilirsin. Registration artık branch oluşturmaz. Mevcut branch için Get Own Branches ilk şubenin ID’sini `branchId` olarak kaydeder.
-2. Services → Get Own Services: ilk hizmetin ID’sini `serviceId` olarak kaydeder. Liste boşsa önce Add Service kullan.
-3. Employees → Add Employee: oluşturulan ID’yi `employeeId` olarak kaydeder. Mevcut çalışanı kullanmak için değişkeni elle ayarla.
-4. Employees → Service Assignments → Assign Service.
-5. Get Assigned Services ile sonucu gör.
-6. İstersen Validation Checks → Reject Duplicate Assignment çalıştır; 409 beklenir.
-7. Unassign Service çalıştır, sonra Get Assigned Services ile eşleştirmenin kaldırıldığını kontrol et.
+## Employee–service assignments
 
-Başka kayıtlarla çalışmak için collection variables içindeki ID’leri değiştir.
-Bütün collection tek bir senaryo olarak çalıştırılmamalı: girişler rol değiştirir, kayıt işlemi e-posta token’ı bekler ve bazı istekler mevcut veriyi değiştirir.
+After signing in as a brand:
 
-Dosya güncellendiğinde Postman’a yeniden import et. Aynı isimli eski collection ile karıştırma; mevcut özel değişken değerlerini önce sakla.
+1. Use **Branches → Create Branch** to provide the address, open days, and working hours. The example uses Monday–Saturday, 08:00–20:00; adjust it as needed. Registration does not create a branch. For an existing branch, **Get Own Branches** saves the first branch ID as `branchId`.
+2. Run **Services → Get Own Services** to save the first service ID as `serviceId`. If the list is empty, use **Add Service** first.
+3. Run **Employees → Add Employee** to save the created ID as `employeeId`. To use an existing employee, set the variable manually.
+4. Run **Employees → Service Assignments → Assign Service**.
+5. Check the result with **Get Assigned Services**.
+6. Optionally run **Validation Checks → Reject Duplicate Assignment**; expect `409`.
+7. Run **Unassign Service**, then **Get Assigned Services** to confirm the assignment was removed.
 
-Branch çalışma saatlerini Get Working Hours ile okuyabilir, Replace Working Hours ile haftanın tamamı için değiştirebilirsin. Listede olmayan günler kapalıdır; boş liste bütün günleri kapatır.
+Change the collection's ID variables to work with other records.
 
-## Employee çalışma saatleri
+## Branch working hours
 
-`Employees → Working Hours` altında haftalık ve tarihe özel işlemler bulunur.
+Read the weekly schedule with **Get Working Hours** and replace the entire week with **Replace Working Hours**. Days omitted from the list are closed; an empty list closes every day.
 
-- İlk durumda employee branch saatlerini kullanır.
-- Set Weekly Hours: haftalık özel ayarların tamamını değiştirir. `workingHours` içindeki günler özel saatleri kullanır, `closedDays` içindeki günler kapalıdır. İkisinde de olmayan günler branch saatlerini kullanır. İki liste de boşsa bütün günler branch'ten alınır.
-- Reset to Branch Hours: özel haftalık saatleri kaldırır. Tarih bazlı kayıtlar korunur.
-- Tarih istekleri için `scheduleDate` değişkenine `YYYY-MM-DD` biçiminde bugün veya gelecek bir tarih yaz.
-- Close Employee for Date: yalnız o tarihi kapatır. Reset Date to Weekly Hours: o gün için haftalık saatlere geri döner.
-- Get Effective Hours for Date: `configuredHours` seçilen saatler, `workingHours` branch sınırları uygulanmış saatlerdir. Employee pasifse `workingHours` boştur.
-- Bu sonuçlar randevu slotları değildir; bunlar çalışma saatleridir; appointment endpoint’i PENDING/APPROVED kayıtları çıkarır.
+Under **Branches → Specific Date**, use the Get, Set, Close, and Reset requests. Set `branchId` and `scheduleDate`. The date is part of the URL; the body contains only `workingHours`.
 
-### Working Hours klasör düzeni ve 404 kontrolü
+An empty date-specific list closes that branch for the selected date. Employee overrides cannot extend beyond branch hours. Reset removes only the date override and restores the weekly schedule. Set can open a normally closed day. Employees inheriting branch hours use those hours; employees with their own configuration remain subject to that configuration.
 
-- **Weekly Schedule:** haftalık saatleri gör, değiştir veya branch saatlerine geri dön.
-- **Specific Date:** seçilen tarihin saatlerini gör, değiştir, günü kapat veya haftalık ayara geri dön.
-- DELETE istekleri employee kaydını silmez; yalnız ilgili özel saat ayarını kaldırır.
+## Employee working hours
 
-Get Weekly Hours cevabında `configuredHours` employee özel saatlerini, `closedDays` kapatılan günleri, `inheritedDays` branch’ten alınan günleri gösterir. `workingHours` birleşik haftalık sonuçtur. Düzenlerken PUT için `configuredHours` ve `closedDays` kullan; birleşik listeyi geri gönderme.
+Use **Employees → Working Hours**:
 
-Get Weekly Hours URL: `{{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours`.
-Önce aynı `employeeId` ile Get Employee çalıştır. Employee bulunamıyorsa seçilen ID'yi kontrol et. Şube bulunamıyorsa giriş yapılan brand ile employee'nin branch'i eşleşmiyor olabilir.
-Get Employee 200, Get Weekly Hours 404 ise çalışan backend'in yeni controller'ı içerdiğini kontrol et; backend'i yeniden başlat ve Postman URL'sini yukarıdaki adresle karşılaştır.
-Postman environment değişkenleri collection değişkenlerini geçersiz kılabilir; `employeeId` için kullanılan gerçek değeri kontrol et.
-Saat kaydı olmaması 404 üretmez: branch saatleri kullanılır; branch'te de saat yoksa boş liste döner.
+- Employees initially inherit branch hours.
+- **Set Weekly Hours** replaces the full weekly configuration. Days in `workingHours` use custom intervals; days in `closedDays` are closed. Days in neither list inherit branch hours. If both lists are empty, every day inherits branch hours.
+- **Reset to Branch Hours** removes the custom weekly configuration but preserves date overrides.
+- For date requests, set `scheduleDate` to today or a future date in `YYYY-MM-DD` format.
+- **Close Employee for Date** closes only that date. **Reset Date to Weekly Hours** removes that date override and resolves the schedule again.
+- **Get Effective Hours for Date** returns selected intervals in `configuredHours` and intervals restricted by branch hours in `workingHours`. Inactive employees have no effective working hours.
+- These are working intervals, not appointment slots. The appointment availability endpoint subtracts existing `PENDING` and `APPROVED` bookings.
 
-## Branch için belirli bir tarih
+### Weekly and date-specific folders
 
-`Branches → Specific Date` altında Get / Set / Close / Reset istekleri bulunur.
-`branchId` ve `scheduleDate` değişkenlerini seç. Tarih URL'dedir; body yalnız `workingHours` içerir.
-Boş liste o gün branch'i kapatır; employee özel saatleri bunu aşamaz. Reset yalnız tarih kaydını kaldırır, haftalık saatleri geri getirir.
-Set ile normalde kapalı bir gün açılabilir. Branch saatlerini kullanan employee'ler bu yeni saatleri kullanır; kendi haftalık ayarı olan employee'ler o ayarla sınırlı kalır.
+- **Weekly Schedule:** view, replace, or reset weekly settings.
+- **Specific Date:** view or replace a date's hours, close the date, or reset it.
+- DELETE requests remove schedule overrides; they do not delete the employee.
 
-## Uygun randevu başlangıçları
+The weekly response uses `configuredHours` for custom intervals, `closedDays` for explicitly closed weekdays, `inheritedDays` for weekdays inherited from the branch, and `workingHours` for the combined result. When editing, build the PUT request from `configuredHours` and `closedDays`; do not send the combined result back as the custom schedule.
 
-`Appointments → Availability → Get Available Slots` isteğini kullan.
+Daily precedence is: employee date override → employee weekday configuration → branch hours for that date. An empty `workingHours` date override explicitly closes the date; it does not fall back to branch hours. DELETE removes that override and reapplies the precedence rules.
 
-1. Brand olarak giriş yap.
-2. `employeeId`, `serviceId` ve `scheduleDate` değerlerini seç. Service employee'ye atanmış olmalı.
-3. GET isteğini gönder; body gerekmez.
-4. Cevaptaki `availableAppointmentSlotDetails.localTimes` başlangıç saatlerini içerir.
+V13 preserves all seven closed weekdays for employees whose earlier empty weekly plans closed the entire week. Missing days in previously populated plans now inherit branch hours. Use **Reset to Branch Hours** to remove those explicit closures.
 
-Saatler hizmet süresine göre üretilir; hizmetin tamamı çalışma aralığına sığmalıdır. Türkiye saatine göre en az bir saat sonrası listelenir. Kapalı/pasif employee veya geçmiş tarih için boş liste normaldir.
-Bu endpoint PENDING/APPROVED randevuları çıkarır; saati rezerve etmez. Seçim sonrası create isteği ayrıca çakışma kontrolü yapar.
+### Troubleshooting a 404
 
+The weekly endpoint is:
 
-Günlük öncelik: employee tarih kaydı → employee'nin o haftanın gününe özel saat/kapalı ayarı → branch'in o tarihteki saatleri. Tarih kaydındaki boş `workingHours` açıkça kapalı demektir; branch'e geri dönmez. Tarih kaydını DELETE ile kaldırınca bu sıra yeniden uygulanır.
+```http
+GET {{baseUrl}}/api/panel/employee/{{employeeId}}/working-hours
+```
 
-V13: Daha önce boş haftalık planla bütün hafta kapatılmış employee'ler için yedi gün `closedDays` olarak korunur. Eski dolu planlarda eksik günler artık branch'ten alınır. Bu explicit kapatmaları kaldırmak için Reset to Branch Hours kullan.
+Run **Get Employee** with the same `employeeId`. Check the selected ID and whether the signed-in brand owns the employee's branch. If Get Employee returns `200` but Get Weekly Hours returns `404`, verify the URL and restart the backend with the updated controller. Check for environment variables overriding `employeeId`.
 
-## Randevu oluşturma — 12 Ekim 2026
+Missing schedule records do not cause `404`: branch hours are inherited, or an empty list is returned if the branch has no hours.
 
-- `Appointments → Brand Creation → Create Appointment as Brand`: brand login sonrası kullanılır. Geçmiş/yakın saatlere kayıt açabilir.
-- `Appointments → Customer Creation → Create Appointment as Customer`: anonim denemek için logout yap, tekrar CSRF al. Cookie ile CSRF aynı oturuma ait olmalı. Başlangıç en az 1 saat sonrası olmalı.
-- `branchId`, `employeeId`, `serviceId`, `scheduleDate`, `appointmentStartTime` değişkenlerini doldur. Çalışan ilgili şubeye, hizmet ilgili brand'e ait ve çalışana atanmış olmalı.
-- `customerEmail` isteğe bağlıdır; alanı silerek deneyebilirsin. `source` gönderilmez; backend belirler. Başarılı cevap 201/PENDING olur, `appointmentId` kaydedilir; başlangıç/bitiş UTC olarak döner.
-- Otomatik integration testi: anonim müşteri kaydı, brand kaydı, source/tarihlerin DB'de doğrulanması, boş email, yanlış şube, çalışma aralığı dışı, customer geçmiş tarih reddi, brand geçmiş tarih kabulü ve anonim panel erişimi reddi.
-- Müşteri OTP kontrolü uygulanıyor; abonelik ve şube kabul kontrolü uygulanıyor. Aynı çalışana çakışan saat için tekrar POST göndermek 409 döndürür; eşzamanlı istekler V17 veritabanı constraint’iyle korunur.
-- Collection dosyasını Postman'e yeniden import et; açık uygulamadaki kopya kendiliğinden güncellenmez.
+## Available appointment start times
 
-## Yeni kayıt izni
+Use **Appointments → Availability → Get Available Slots**:
 
-Her iki create isteğinden önce admin hesabıyla brand hesabının `subscriptionActive` alanını true yap; ardından brand hesabıyla `Branches → Open Appointment Acceptance` isteğini çalıştır. Admin/brand login değişikliklerinden sonra CSRF token'ı yenile.
+1. Sign in as a brand.
+2. Set `employeeId`, `serviceId`, and `scheduleDate`. The service must be assigned to the employee.
+3. Send the GET request without a body.
+4. Read start times from `availableAppointmentSlotDetails.localTimes`.
 
-Abonelik pasifse veya şube kabulü kapalıysa create 409 döner ve nedenini detail alanında açıklar. İkisi de açıkken diğer doğrulamalar uygunsa 201 döner. Bu ayarlar panel girişini engellemez ve mevcut randevuları silmez. Müşteri için anonimliğini koruyup yeniden CSRF al; aşağıdaki OTP adımlarını uygula.
+Start times advance according to the selected service duration, and the entire service must fit within a working interval. The endpoint lists starts at least one hour ahead using `Europe/Istanbul`. An empty list is expected for past dates or closed/inactive employees.
 
-## Customer OTP kullanımı
+The endpoint subtracts `PENDING` and `APPROVED` bookings but does not reserve a time. Creation checks availability and conflicts again.
 
-`Appointments → Customer Creation` klasöründe sırasıyla:
+## Appointment creation
 
-1. `01 Request SMS Code`: customerPhone değişkenini doldur. Dev backend logundaki `DEV SMS` satırından kodu al ve smsCode değişkenine yaz.
-2. `02 Verify SMS Code`: doğrulanınca phoneVerificationToken otomatik kaydedilir.
-3. `Create Appointment as Customer`: aynı telefon ve X-Phone-Verification header'ı gönderilir. Başarılı kayıtta token tüketilir; yeni randevu için yeniden doğrulama gerekir. Başarısız randevuda token süresi dolmadıysa yeniden denenebilir.
+- **Appointments → Brand Creation → Create Appointment as Brand** requires a brand session. The brand can book past or near-term times if the appointment fits the applicable working hours.
+- **Appointments → Customer Creation → Create Appointment as Customer** supports anonymous customers. Log out and obtain a fresh CSRF token; the CSRF cookie and header must belong to the same session. Customer bookings must start at least one hour ahead.
+- Set `branchId`, `employeeId`, `serviceId`, `scheduleDate`, and `appointmentStartTime`. The employee must belong to the selected branch, and the service must belong to the brand and be assigned to that employee.
+- `customerEmail` is optional. Do not send `source`; the backend assigns it. Successful creation returns `201` with status `PENDING`, stores `appointmentId` in Postman, and returns start/end times as UTC Instants.
+- Customer creation requires OTP verification. Both creation paths require an active subscription and an accepting branch. Overlapping bookings return `409`; V17 also protects against concurrent double booking at the database level.
 
-Kod 2 dakika geçerlidir; 3 yanlış denemeden sonra kullanılamaz. Yeni kod için 60 saniye beklenir; son bir saat içinde en fazla 3 gönderim yapılır. 429 cevabındaki Retry-After bekleme süresidir. Doğrulama token'ı 5 dakika geçerlidir. Kod veya token başka telefonda kullanılamaz. Brand Creation OTP istemez. Gerçek SMS sağlayıcısı bağlı değildir; sadece dev profilinde log üzerinden denenir, prod profilinde gönderim 503 döner.
+Integration tests cover customer and brand creation, persisted source/timestamps, optional email, incorrect branches, working-hour limits, customer lead time, brand past-time booking, and anonymous panel-access rejection.
 
-## Randevu onaylama ve reddetme
+### Permission to create new bookings
 
-`Appointments → Appointment Actions` altında `Approve Appointment` ve `Reject Appointment` var. Randevunun sahibi brand ile giriş yapıp CSRF yenile. `appointmentId` oluşturma cevabından otomatik alınır; body gönderilmez. Başarı 200 ve boş body döner.
+Use an admin account to set the brand account's `subscriptionActive` to `true`. Then sign in as the brand and run **Branches → Open Appointment Acceptance**. Refresh CSRF after switching accounts.
 
-İki işlemi denemek için ayrı PENDING randevular kullan. Aynı ID ile `Again (409)` isteği durum değişikliğinin tekrar yapılamadığını kontrol eder. Başka brand'in randevusu veya bulunmayan ID 404 döner. REJECTED kayıt silinmez, saati serbest kalır. V19 migration uygulanmış olmalı. Güncel collection dosyasını yeniden import et.
+An inactive subscription or closed appointment acceptance returns `409` with an explanation in `detail`. If both are enabled and all other checks pass, creation returns `201`. These settings do not block panel login, remove existing bookings, or prevent viewing them.
 
-## Brand appointment actions — 17 October 2026
+For anonymous customer testing, log out, refresh CSRF, and follow the OTP steps below.
 
-Postman: `Appointments → Appointment Actions`. POST panel endpoints: `/api/panel/appointment/approve-appointment/{appointmentId}`, `/reject-appointment/{appointmentId}` and `/cancel-appointment/{appointmentId}` (same prefix). Use the owning BRAND session and CSRF, with no body. Success returns 200 with an empty body.
+### Customer OTP
 
-Approval/rejection require PENDING. Cancellation accepts PENDING or APPROVED and sets CANCELLED. Missing/foreign records return 404; invalid/repeated transitions return 409. A row lock serializes concurrent decisions. Cancelled/rejected records remain stored and no longer block time; retrying cancellation cannot affect a replacement booking. Cancellation does not require an active subscription or branch acceptance. V19 permits REJECTED and V20 permits CANCELLED; V17 still blocks only PENDING/APPROVED.
+Under **Appointments → Customer Creation**:
 
-Customer cancellation and brand rejection/cancellation SMS enqueueing are implemented. Cancellation cutoff snapshots are implemented in V21. Reimport the collection to see new requests.
+1. Run **01 Request SMS Code** with `customerPhone`. In the dev profile, copy the code from the backend's `DEV SMS` log into `smsCode`.
+2. Run **02 Verify SMS Code**. The response automatically saves `phoneVerificationToken`.
+3. Run **Create Appointment as Customer** with the same phone and the `X-Phone-Verification` header. Successful creation consumes the proof. A new appointment requires new verification; a failed creation can be retried while the proof remains valid.
 
-## Brand cancellation policy — 17 October 2026
+The SMS code is valid for two minutes and allows at most three incorrect attempts. Wait at least 60 seconds before requesting another code; a phone number may receive at most three codes per hour. A `429` response includes `Retry-After`. The verification proof is valid for five minutes. Neither a code nor a proof can be used with a different phone number.
 
-`PATCH /api/panel/brand/cancellation-policy` accepts `{"cancellationNoticeHours":3}` for the authenticated BRAND. CSRF required. Integer hours 0–168; default 0 means until the appointment starts. Missing/null/out-of-range values return 400. The 200 response and GET `/api/panel/brand` include the setting. Postman: Brand → Update Cancellation Policy.
+Brand creation does not require OTP. A real SMS provider is not configured: the dev profile logs messages, while production sending returns `503`.
 
-Both brand and customer creation store and return `cancellationDeadline = startsAt - cancellationNoticeHours` as an Instant. Changing the policy affects only new bookings. V21 adds the setting and backfills existing bookings with their start time (initial zero-hour policy). Brand cancellation is not limited by this deadline. Customer token access and deadline enforcement are implemented as described below.
+## Brand appointment actions
 
-## Customer access and cancellation — 22 October 2026
+Use **Appointments → Appointment Actions** with the owning brand's session, a refreshed CSRF token, and no request body:
 
-Postman: `Appointments → Customer Access and Cancellation`. Set `appointmentAccessToken` to the raw token from the SMS link (dev: message in DEV SMS logs). It is not the OTP proof or token hash.
+```http
+POST /api/panel/appointment/approve-appointment/{appointmentId}
+POST /api/panel/appointment/reject-appointment/{appointmentId}
+POST /api/panel/appointment/cancel-appointment/{appointmentId}
+```
 
-- GET `/api/public/appointment/details` with `X-Appointment-Token` displays details without changing the booking.
-- POST `/api/public/appointment/cancel-appointment` with the same header and a valid CSRF cookie/header cancels without login or body.
-- Cancellation locks the appointment by token hash. Expired access token returns 410; status other than PENDING/APPROVED or reaching the stored cancellation deadline returns 409; unknown token returns 404. Equality with the deadline is rejected.
-- Cancellation stores CANCELLED and one encrypted APPOINTMENT_CANCELLED SMS job atomically; an enqueue failure rolls back cancellation. Repeated/concurrent cancellation cannot enqueue a second SMS. Cancelled bookings no longer block time. Cancellation SMS is not automatically retried.
-- Manual flow: Get Details → Cancel Appointment as Customer → Cancel Again (409). Get Details again shows CANCELLED while the access token is valid. New collection requests require reimporting the JSON file.
+Success returns `200` with an empty body. Creation saves `appointmentId` automatically.
 
-### Brand decision SMS — 24 October 2026
+- Approval and rejection require `PENDING`.
+- Cancellation accepts `PENDING` or `APPROVED` and sets `CANCELLED`.
+- Missing or foreign appointments return `404`; invalid or repeated transitions return `409`.
+- A row lock serializes concurrent decisions. Rejected/cancelled records remain stored but no longer block time. Retrying cancellation cannot affect a replacement booking.
+- Brand cancellation does not require an active subscription or an accepting branch and is not limited by the customer's cancellation deadline.
 
-Brand rejection and cancellation enqueue APPOINTMENT_REJECTED / APPOINTMENT_CANCELLED in the same transaction as the status change. Failed queue persistence rolls back both changes. Repeated/invalid decisions return 409 without another SMS; foreign appointments return 404. Concurrent decisions produce only the winning decision's SMS. Delivery failure has no automatic retry for these message types.
+Use separate pending appointments to test approval and rejection. Test **Reject Appointment → Reject Appointment Again (409)** on one booking and **Cancel Appointment → Cancel Appointment Again (409)** on another. Keep the same ID for each repeated action.
 
-In Postman, use Appointments → Appointment Actions. Test Reject Appointment → Reject Appointment Again (409) on one PENDING booking, then Cancel Appointment → Cancel Appointment Again (409) on a separate PENDING or APPROVED booking. Keep appointmentId unchanged for each repeat. HTTP checks verify responses; database-backed integration tests verify encrypted SMS persistence, transaction rollback and concurrency. A 200 response does not mean the SMS provider has delivered the message.
+V19 adds `REJECTED`, V20 adds `CANCELLED`, and V17 blocks time only for `PENDING`/`APPROVED`.
 
-## Daily branch appointments and reminders — 25 October 2026
+### Decision SMS
 
-`GET /api/panel/appointment/{branchId}/{date}` lists the selected branch's appointments for an Istanbul calendar day (YYYY-MM-DD). Requires the owning BRAND session; no GET body or CSRF header. Anonymous requests return 401, admin 403, missing/foreign branches 404, invalid dates/UUIDs 400. Viewing existing appointments does not require subscriptionActive or acceptingAppointments.
+Brand rejection and cancellation enqueue `APPOINTMENT_REJECTED` or `APPOINTMENT_CANCELLED` in the same transaction as the status change. Queue persistence failure rolls back both changes. Invalid/repeated decisions do not enqueue another SMS; concurrent decisions produce only the winning decision's message.
 
-Response is `{"details":[...]}`, including appointmentId, branchId, employeeId, employeeFirstName, employeeLastName, serviceName, durationMinutes, customerFirstName, customerLastName, customerPhone, startsAt, endsAt, appointmentStatus and appointmentSource. Empty days return `{"details":[]}`. No token/hash is exposed. Timestamps are UTC Instants; display them in Europe/Istanbul. The date filter uses startsAt >= local midnight and startsAt < next local midnight. All statuses are included, sorted by startsAt then id.
+These SMS types do not automatically retry after delivery failure. A `200` response confirms the transaction, not delivery by the SMS provider. Postman checks HTTP responses; database integration tests check encrypted persistence, rollback, and concurrency.
 
-Appointments and branch employees are fetched in two bulk data queries and joined in memory by UUID (the ownership check may execute an additional query). EmployeeDetails is exported from the employee root package. Missing employee matches produce null name fields without dropping the appointment. Employee names are current; service name/duration remain booking snapshots.
+## Brand cancellation policy
 
-Postman: Appointments → Daily Branch Appointments. Set branchId and scheduleDate. For the foreign-branch check, set otherBrandBranchId to another brand's branch while keeping the original login. Run the anonymous check after logout, then log in again. Reimport the collection. The database integration test covers midnight boundaries, sorting, all statuses, independent branches, inactive employees, snapshots, empty days and access/input errors.
+Use **Brand → Update Cancellation Policy**:
 
-Reminder scheduling is implemented: creation queues 24h/2h jobs only when their due time is now or in the future. Worker rechecks eligibility before each reminder attempt, including retry. Missing, rejected, cancelled or already-started appointments cause SKIPPED, completion time and body clearing without another delivery attempt. Delayed reminders remain eligible before appointment start and contain the actual Istanbul date/time. V24 allows SKIPPED. Real provider integration and a panel SMS delivery-status API remain pending.
+```http
+PATCH /api/panel/brand/cancellation-policy
+```
+
+```json
+{"cancellationNoticeHours": 3}
+```
+
+The authenticated brand session and CSRF are required. The value must be an integer from 0 to 168; default 0 means cancellation is allowed until the appointment starts. Missing, null, or out-of-range values return `400`. The update response and `GET /api/panel/brand` include the setting.
+
+Both creation paths store and return `cancellationDeadline = startsAt - cancellationNoticeHours` as an Instant. Later policy changes affect only new bookings. V21 backfills existing bookings with their start time, reflecting the initial zero-hour policy. Customer cancellation requires the current time to be strictly before this deadline; equality is rejected.
+
+## Customer access and cancellation
+
+Use **Appointments → Customer Access and Cancellation**. Set `appointmentAccessToken` to the raw token from the SMS link. In dev, obtain it from the `DEV SMS` log. It is not the OTP proof or the database token hash. Creation does not return the access token.
+
+- GET `/api/public/appointment/details` with `X-Appointment-Token` reads details without modifying the appointment.
+- POST `/api/public/appointment/cancel-appointment` with the same token header and a valid CSRF cookie/header cancels without login or a body.
+- Unknown tokens return `404`; expired access tokens return `410`. Invalid status or a reached cancellation deadline returns `409`.
+- Cancellation locks the appointment by token hash and atomically stores `CANCELLED` plus one encrypted cancellation SMS job. An enqueue failure rolls back cancellation. Repeated/concurrent requests cannot enqueue a second cancellation message.
+- Cancelled appointments no longer block time. Cancellation SMS does not automatically retry.
+
+Manual flow: **Get Appointment Details → Cancel Appointment as Customer → Cancel Again (409)**. Reading details again shows `CANCELLED` while the access token remains valid. The access token expires 30 days after the appointment starts; this does not extend the cancellation deadline.
+
+## Daily branch appointments
+
+Use **Appointments → Daily Branch Appointments**:
+
+```http
+GET /api/panel/appointment/{branchId}/{date}
+```
+
+Set `branchId` and `scheduleDate` (`YYYY-MM-DD`). The date represents an Istanbul calendar day. The owning brand session is required; no GET body or CSRF header is needed. Anonymous requests return `401`, admin requests `403`, missing/foreign branches `404`, and malformed dates/UUIDs `400`.
+
+The response is `{"details":[...]}`. Empty days return `{"details":[]}`. Fields include:
+
+- `appointmentId`, `branchId`, `employeeId`
+- `employeeFirstName`, `employeeLastName`
+- `serviceName`, `durationMinutes`
+- `customerFirstName`, `customerLastName`, `customerPhone`
+- `startsAt`, `endsAt`, `appointmentStatus`, `appointmentSource`
+
+No access token or hash is exposed. Timestamps are UTC Instants; display them in `Europe/Istanbul`. The query includes starts at local midnight and excludes starts at the next local midnight. All statuses are included, ordered by `startsAt` then `id`.
+
+Appointments and branch employees are fetched in two bulk data queries and matched by UUID in memory; ownership validation may execute another query. Missing employee matches produce null names without dropping the appointment. Employee names are current, while service name/duration are booking snapshots. Viewing existing appointments does not require an active subscription or appointment acceptance.
+
+For the foreign-branch check, set `otherBrandBranchId` to another brand's branch while keeping the original login. Run the anonymous check after logout, then log in again. Integration tests cover day boundaries, ordering, statuses, branch isolation, inactive employees, snapshots, empty results, and access/input errors.
+
+## Reminder delivery
+
+Creation schedules 24-hour and 2-hour reminder jobs only if their due time is now or in the future. Past reminder thresholds do not create jobs.
+
+Before every reminder attempt, including retries, the worker checks whether the appointment exists, is `PENDING`/`APPROVED`, and has not started. Ineligible jobs become `SKIPPED`: the completion time is recorded, the encrypted body is cleared, and no additional delivery attempt is counted. V24 permits this status.
+
+A delayed reminder can still be sent before the appointment starts. Messages contain the actual Istanbul date/time rather than an inaccurate remaining-hours claim. Creation/reminder SMS failures retry once after ten minutes; rejection/cancellation and OTP messages do not automatically retry.
+
+A real SMS provider and a panel API for viewing SMS delivery status remain pending. Worker locking prevents concurrent selection of the same job; it cannot guarantee exactly-once delivery if the process stops after provider delivery but before database commit.
+
+## Public booking URL
+
+Brands have an immutable, unique `slug` with a maximum length of 120 characters. New brands use a normalized ASCII display-name prefix plus the full brand UUID without hyphens. Turkish letters are transliterated; names with no supported characters use `brand` as the prefix. The UUID suffix avoids duplicate-name collisions. V25 assigns `brand-<uuid>` to existing brands without changing their IDs or display names. There is no slug-edit endpoint; the database enforces non-null, unique, lowercase URL-safe values.
+
+`GET /api/panel/brand` and cancellation-policy responses include `slug`. The planned frontend route is `/randevu/{slug}`; this backend does not serve that page. It provides:
+
+```http
+GET /api/public/brands/{slug}
+```
+
+No authentication, CSRF, or appointment token is required. The response contains `id`, `displayName`, `slug`, and `branches`. Each branch contains only `id`, `name`, `address`, and `googleMapsUrl`.
+
+Only the matching brand's branches with `acceptingAppointments=true` are returned, ordered by `createdAt` then `id`. If no branch accepts bookings, the array is empty. Unknown slugs return `404`. Discovery does not grant booking permission or bypass subscription, schedule, OTP, or overlap checks during creation.
+
+Brand looks up branches through `BranchOperations` and `PublicBranchDetails`, without accessing the branch entity/repository. Public branch-service discovery is available under Public Booking. Public employee and availability discovery APIs remain subsequent work; existing panel endpoints have not been made public.
+
+In Postman:
+
+1. Run **Brand → Get Own Brand** to save `brandSlug`.
+2. Run **Public Booking → Get Brand by Slug**.
+3. Log out and repeat to verify anonymous access.
+4. Run **Unknown Brand Slug (404)** to check the missing-brand response.
+
+The slug identifies a business. The SMS access token identifies one appointment; they are separate values with different purposes.
+
+## Branch service assignments
+
+Services remain in the brand catalog. Use **Services → Branch Assignments** to select which services a branch offers.
+
+- `PUT /api/panel/branches/{branchId}/services/{serviceId}` assigns a service.
+- `DELETE /api/panel/branches/{branchId}/services/{serviceId}` removes only that assignment.
+- Both require a BRAND session and CSRF token, take no body, and return `204`. Repeated requests are safe.
+- Both the branch and service must belong to the signed-in brand; otherwise the response is `404`.
+- **Public Booking → Get Branch Services** lists these assignments without login.
+
+Migration V26 creates an empty assignment table; it does not automatically assign existing catalog services. Employee assignments and existing appointments are unchanged.
+
+Implementation: branch assignments use JPA save/delete and a pessimistic lock on the service row. The public list uses JPQL. Existing endpoint URLs and request bodies are unchanged by this implementation change.
+
+Branch-service membership is now checked during employee assignment, available-time listing, and both brand/customer appointment creation. Missing membership returns 400 with "Bu hizmet seçilen şubede sunulmuyor." Removing an assignment preserves existing employee assignments and appointments, but blocks new bookings until the service is reassigned to the branch.
+
+### Branch membership checks
+
+Order: create a brand service → assign it to the branch → assign it to an employee → request availability/create a booking. Use **Services → Branch Assignment Checks (Manual)** after removing the branch assignment. Run these checks manually with valid prerequisite data, then reassign the service. PUT/DELETE requests include the CSRF header. Reimport the updated collection into Postman.

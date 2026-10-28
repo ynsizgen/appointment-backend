@@ -29,6 +29,12 @@ class BrandBranchMigrationTests {
             assertThat(sql(database, "SELECT string_agg(column_name || ':' || data_type || ':' || is_nullable, ',' ORDER BY column_name) FROM information_schema.columns WHERE table_schema='appointment' AND table_name='appointments' AND column_name IN ('starts_at','ends_at','status','source');"))
                     .isEqualTo("ends_at:timestamp with time zone:NO,source:character varying:NO,starts_at:timestamp with time zone:NO,status:character varying:NO");
             assertThat(sql(database, "SELECT count(*) FROM appointment.brands;")).isEqualTo("2");
+            assertThat(sql(database, "SELECT count(DISTINCT slug) FROM appointment.brands WHERE slug IS NOT NULL;")).isEqualTo("2");
+            assertThat(sql(database, "SELECT slug FROM appointment.brands WHERE id='00000000-0000-0000-0000-000000000001';"))
+                    .isEqualTo("brand-00000000000000000000000000000001");
+            sql(database, "UPDATE appointment.brands SET display_name='Renamed' WHERE id='00000000-0000-0000-0000-000000000002';");
+            assertThat(sql(database, "SELECT slug FROM appointment.brands WHERE id='00000000-0000-0000-0000-000000000002';"))
+                    .isEqualTo("brand-00000000000000000000000000000002");
             assertThat(sql(database, "SELECT count(*) FROM appointment.branches;")).isEqualTo("2");
             assertThat(sql(database, """
                 SELECT b.display_name || '|' || br.name || '|' || br.address || '|' || br.google_maps_url

@@ -80,8 +80,13 @@ public class EmployeeService implements EmployeeOperations {
     public EmployeeServiceAssignmentDetails assignServiceToEmployee(UUID brandId, EmployeeServiceAssignmentRequest request) {
         Employee employee = employeeRepository.findById(request.employeeId()).orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, " Employee bulunamadı."));
 
+
         branchOperations.requireOwnedBy(employee.getBranchId(), brandId);
         serviceOperations.requireOwnedBy(request.serviceId(), brandId);
+        serviceOperations.requireAssignedToBranch(
+                request.serviceId(),
+                employee.getBranchId()
+        );
 
         if (employeeServiceAssignmentRepository.existsByEmployeeIdAndServiceId(request.employeeId(), request.serviceId())) {
             throw new ApiException(HttpStatus.CONFLICT, "Bu service employee'ye zaten atanmış."

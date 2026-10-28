@@ -1,5 +1,6 @@
 package com.appointmentplatform.branch.application;
 import com.appointmentplatform.branch.BranchDailySchedule;
+import com.appointmentplatform.branch.PublicBranchDetails;
 import com.appointmentplatform.branch.BranchOperations;
 import com.appointmentplatform.branch.BranchWorkingInterval;
 import com.appointmentplatform.branch.domain.Branch;
@@ -27,6 +28,14 @@ public class BranchService implements BranchOperations {
         this.dates = dates;
         this.repository = repository; this.audit = audit;
         this.hours = hours;
+    }
+
+    @Override
+    public List<PublicBranchDetails> acceptingBranches(UUID brandId) {
+        return repository.findByBrandIdAndAcceptingAppointmentsTrueOrderByCreatedAtAscIdAsc(brandId)
+                .stream()
+                .map(branch -> new PublicBranchDetails(branch.id(), branch.name(), branch.address(), branch.googleMapsUrl()))
+                .toList();
     }
 
     @Transactional
