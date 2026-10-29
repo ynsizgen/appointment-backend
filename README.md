@@ -218,7 +218,7 @@ Brands have an immutable, unique `slug` (varchar(120)). New brands use a normali
 
 `GET /api/panel/brand` and cancellation-policy responses include `slug`. The future frontend route is `/randevu/{slug}`; this backend does not serve that page. It calls `GET /api/public/brands/{slug}` without authentication, CSRF or an appointment token. The public response is `{id, displayName, slug, branches: [{id, name, address, googleMapsUrl}]}`. Only the matching brand's branches with acceptingAppointments=true are returned, in createdAt/id order. No accepting branch returns an empty array; unknown slug returns 404. Discovery is informational: it does not grant reservation permission or bypass subscription, schedule, OTP or overlap checks at creation.
 
-Brand delegates the branch lookup through BranchOperations and PublicBranchDetails; brand declares branch as an allowed dependency, without accessing its repository/entity. This is an acyclic dependency. Public branch-service discovery is implemented as described below. Public employee discovery is implemented below; public availability discovery remains subsequent work; existing panel endpoints are not made public.
+Brand delegates the branch lookup through BranchOperations and PublicBranchDetails; brand declares branch as an allowed dependency, without accessing its repository/entity. This is an acyclic dependency. Public branch-service discovery is implemented as described below. Public employee discovery is implemented below; public availability discovery is also implemented below; existing panel endpoints are not made public.
 
 Postman: run Brand → Get Own Brand to capture brandSlug; then Public Booking → Get Brand by Slug. Log out to verify anonymous access. Unknown Brand Slug expects 404. Reimport the collection JSON. The URL identifies a business, not an individual appointment; SMS appointment access tokens remain separate.
 
@@ -242,3 +242,13 @@ Branch-service membership is now checked during employee assignment, available-t
 The endpoint uses EmployeeService and an EmployeeRepository JPQL query. ServiceOperations checks branch-service membership; service does not depend on employee. No migration is required. This lists eligible active employees, not free appointment times; subscription, branch acceptance and date/time availability are not checked here.
 
 Postman: **Public Booking → Employees**. Reimport the collection, set branchId and serviceId, then choose an employee ID from the response for later requests.
+
+## Public appointment availability
+
+`GET /api/public/appointment/available-slot/{branchId}/{serviceId}/{employeeId}/{date}` is anonymous and accepts no body or CSRF token. Use YYYY-MM-DD for date. The backend resolves brandId from the branch and verifies that the employee belongs to that branch. Active subscription and branch appointment acceptance are required.
+
+Public and panel endpoints share `getAvailableStartTimes`. Service ownership, branch-service and employee-service assignments are checked. The response is `{"availableAppointmentSlotDetails":{"serviceId":"...","employeeId":"...","localTimes":["09:00:00"]}}`. Times are Europe/Istanbul local times, at least one hour ahead; the complete service must fit in working hours and PENDING/APPROVED appointments block their intervals. Closed days, inactive employees or no fitting times return 200 with an empty localTimes array. This GET does not reserve a slot; creation checks again.
+
+Errors: malformed UUID/date or mismatched employee branch → 400; missing service assignments → 400; unknown branch/employee/service → 404; inactive subscription or appointment acceptance disabled → 409. Existing panel endpoints still require BRAND login. No migration was added.
+
+Postman: **Public Booking → Available Slots**. Set branchId, serviceId, employeeId and scheduleDate. The closed-booking case is a manual negative test; restore the disabled setting afterwards.

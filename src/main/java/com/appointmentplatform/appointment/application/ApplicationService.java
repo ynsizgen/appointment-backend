@@ -466,4 +466,22 @@ public class ApplicationService{
                 })
                 .toList();
     }
+
+
+    public AvailableAppointmentSlotDetails getPublicAvailableStartTimes(UUID branchId, UUID serviceId, UUID employeeId, LocalDate date) {
+
+        UUID brandId = branchOperations.brandId(branchId);
+
+        if (!branchId.equals(employeeOperations.branchId(employeeId))) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Çalışan seçilen şubeye ait değil."
+            );
+        }
+        subscriptions.requireActiveSubscription(brandId);
+        branchOperations.requireAcceptingAppointments(branchId, brandId);
+
+        return getAvailableStartTimes(brandId, serviceId, employeeId, date);
+
+    }
 }

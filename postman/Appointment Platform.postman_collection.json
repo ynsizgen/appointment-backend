@@ -2834,6 +2834,107 @@
               ]
             }
           ]
+        },
+        {
+          "name": "Available Slots",
+          "item": [
+            {
+              "name": "Get Public Available Slots",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/appointment/available-slot/{{branchId}}/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
+                "description": "Anonymous GET; no body, login or CSRF required. Set branchId, serviceId, employeeId and scheduleDate. Requires active subscription and appointment acceptance; employee must belong to branch and service must be assigned to both branch and employee. Returns the shared panel calculation: Istanbul local times, at least one hour ahead, excluding PENDING/APPROVED bookings. Closed dates or inactive employees return an empty list. A returned slot is not reserved; create rechecks availability."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "for (const key of ['branchId', 'employeeId', 'serviceId']) { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pm.variables.get(key) || '')) throw new Error('Set ' + key + ' to an existing UUID. Check environment overrides.'); }",
+                      "if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(pm.variables.get('scheduleDate') || '')) throw new Error('Set scheduleDate in YYYY-MM-DD format.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                      "if (pm.response.code === 200) {",
+                      "  const result = pm.response.json().availableAppointmentSlotDetails;",
+                      "  pm.test('Requested IDs match', () => { pm.expect(result.employeeId).to.eql(pm.variables.get('employeeId')); pm.expect(result.serviceId).to.eql(pm.variables.get('serviceId')); });",
+                      "  pm.test('Slots are ordered time strings', () => { pm.expect(result.localTimes).to.be.an('array'); result.localTimes.forEach(t => pm.expect(t).to.match(/^\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$/)); pm.expect(result.localTimes).to.eql([...result.localTimes].sort()); });",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Reject Invalid Date",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/appointment/available-slot/{{branchId}}/{{serviceId}}/{{employeeId}}/2031-02-30",
+                "description": "Uses an invalid calendar date; IDs must have valid UUID format."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 400\", () => pm.response.to.have.status(400));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reject Unknown Branch",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/appointment/available-slot/{{$randomUUID}}/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
+                "description": "Requires valid UUIDs for employeeId/serviceId and a valid scheduleDate."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 404\", () => pm.response.to.have.status(404));"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reject Closed Booking (Manual)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{baseUrl}}/api/public/appointment/available-slot/{{branchId}}/{{serviceId}}/{{employeeId}}/{{scheduleDate}}",
+                "description": "First disable either the brand subscription or branch appointment acceptance. Keep valid matching IDs. Restore the setting after this manual test."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Returns 409\", () => pm.response.to.have.status(409));"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
         }
       ]
     }

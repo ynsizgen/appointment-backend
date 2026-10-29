@@ -243,7 +243,7 @@ No authentication, CSRF, or appointment token is required. The response contains
 
 Only the matching brand's branches with `acceptingAppointments=true` are returned, ordered by `createdAt` then `id`. If no branch accepts bookings, the array is empty. Unknown slugs return `404`. Discovery does not grant booking permission or bypass subscription, schedule, OTP, or overlap checks during creation.
 
-Brand looks up branches through `BranchOperations` and `PublicBranchDetails`, without accessing the branch entity/repository. Public branch-service discovery is available under Public Booking. Public employee discovery is available under Public Booking → Employees; public availability discovery remains subsequent work; existing panel endpoints have not been made public.
+Brand looks up branches through `BranchOperations` and `PublicBranchDetails`, without accessing the branch entity/repository. Public branch-service discovery is available under Public Booking. Public employee discovery is available under Public Booking → Employees; public availability discovery is also implemented below; existing panel endpoints have not been made public.
 
 In Postman:
 
@@ -281,3 +281,13 @@ Order: create a brand service → assign it to the branch → assign it to an em
 The endpoint uses EmployeeService and an EmployeeRepository JPQL query. ServiceOperations checks branch-service membership; service does not depend on employee. No migration is required. This lists eligible active employees, not free appointment times; subscription, branch acceptance and date/time availability are not checked here.
 
 Postman: **Public Booking → Employees**. Reimport the collection, set branchId and serviceId, then choose an employee ID from the response for later requests.
+
+## Public appointment availability
+
+`GET /api/public/appointment/available-slot/{branchId}/{serviceId}/{employeeId}/{date}` is anonymous and accepts no body or CSRF token. Use YYYY-MM-DD for date. The backend resolves brandId from the branch and verifies that the employee belongs to that branch. Active subscription and branch appointment acceptance are required.
+
+Public and panel endpoints share `getAvailableStartTimes`. Service ownership, branch-service and employee-service assignments are checked. The response is `{"availableAppointmentSlotDetails":{"serviceId":"...","employeeId":"...","localTimes":["09:00:00"]}}`. Times are Europe/Istanbul local times, at least one hour ahead; the complete service must fit in working hours and PENDING/APPROVED appointments block their intervals. Closed days, inactive employees or no fitting times return 200 with an empty localTimes array. This GET does not reserve a slot; creation checks again.
+
+Errors: malformed UUID/date or mismatched employee branch → 400; missing service assignments → 400; unknown branch/employee/service → 404; inactive subscription or appointment acceptance disabled → 409. Existing panel endpoints still require BRAND login. No migration was added.
+
+Postman: **Public Booking → Available Slots**. Set branchId, serviceId, employeeId and scheduleDate. The closed-booking case is a manual negative test; restore the disabled setting afterwards.
